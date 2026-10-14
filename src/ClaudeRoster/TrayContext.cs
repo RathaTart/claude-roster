@@ -218,6 +218,9 @@ internal sealed class TrayContext : ApplicationContext
     private void AddFooter()
     {
         _menu.Items.Add(new ToolStripSeparator());
+        var share = new ToolStripMenuItem("Share Code sessions between accounts") { Checked = SafeShareSetting(), Enabled = !_busy };
+        share.Click += (_, _) => ToggleSharing(!share.Checked);
+        _menu.Items.Add(share);
         var startup = new ToolStripMenuItem("Start with Windows") { Checked = StartupRegistration.IsEnabled() };
         startup.Click += (_, _) => StartupRegistration.SetEnabled(!startup.Checked);
         _menu.Items.Add(startup);
@@ -345,6 +348,44 @@ internal sealed class TrayContext : ApplicationContext
         finally
         {
             _prompting = false;
+        }
+    }
+
+    private void ToggleSharing(bool enable)
+    {
+        if (enable && !Dialogs.Confirm(ShareConfirmation))
+        {
+            return;
+        }
+
+        try
+        {
+            _switcher.SetShareCodeSessions(enable);
+            Notify(enable
+                ? "Claude Code sessions will be shared from the next switch on."
+                : "Sessions are no longer shared. Ones already copied stay in both accounts.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            Dialogs.Error(exception.Message);
+        }
+    }
+
+    internal const string ShareConfirmation =
+        "Show every saved account's Claude Code sessions in all of them?\n\n" +
+        "Each time you switch, sessions are copied between your accounts, so you can see and continue any session from either one. " +
+        "Continuing a session sends that conversation through the account you're signed in to.\n\n" +
+        "If one of these accounts belongs to your employer, check its policy before letting work sessions into a personal account.";
+
+    private bool SafeShareSetting()
+    {
+        try
+        {
+            return _switcher.ShareCodeSessions;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            return false;
         }
     }
 

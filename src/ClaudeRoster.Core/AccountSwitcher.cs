@@ -59,6 +59,16 @@ public sealed class AccountSwitcher
 
     public bool HasSavedSignIn(AccountProfile profile) => _snapshots.ReadInfo(_paths.SessionDirectory(profile.Id)) is not null;
 
+    public bool ShareCodeSessions => _store.Load().ShareCodeSessions;
+
+    /// <summary>Takes effect at the next switch, the next time Claude is closed.</summary>
+    public void SetShareCodeSessions(bool enabled)
+    {
+        var state = _store.Load();
+        state.ShareCodeSessions = enabled;
+        _store.Save(state);
+    }
+
     public LiveStatus GetStatus() => GetStatus(_store.Load());
 
     /// <summary>
@@ -243,6 +253,7 @@ public sealed class AccountSwitcher
             throw new ClaudeRosterException("Switching failed, so your previous account was put back.", exception);
         }
 
+        var sharingWarning = state.ShareCodeSessions ? TryShareSessions(state, backup) : null;
         if (target is not null)
         {
             target.LastUsedAt = _time.GetUtcNow();
@@ -250,7 +261,29 @@ public sealed class AccountSwitcher
         }
 
         PruneBackups();
-        return new SwitchOutcome(target, await TryOpenAsync(before, cancellationToken));
+        var openWarning = await TryOpenAsync(before, cancellationToken);
+        return new SwitchOutcome(target, openWarning is null ? sharingWarning : sharingWarning is null ? openWarning : $"{sharingWarning} {openWarning}");
+    }
+
+    /// <summary>Sharing rides on a switch that has already worked, so a failure here only warns.</summary>
+    private string? TryShareSessions(RosterState state, string backup)
+    {
+        var sharing = new SessionSharing(_install.DataRoot, _paths.SharedSessionsStateFile);
+        var accounts = state.Profiles.Select(profile => profile.AccountUuid).ToList();
+        try
+        {
+            foreach (var folder in sharing.AccountFolders(accounts))
+            {
+                FileOps.CopyDirectory(folder, Path.Combine(backup, SessionSharing.SessionsFolderName, Path.GetFileName(folder)));
+            }
+
+            sharing.Sync(accounts);
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return $"Switched, but Claude Code sessions couldn't be shared this time: {exception.Message}";
+        }
     }
 
     private async Task<string?> TryOpenAsync(ClaudeRunState before, CancellationToken cancellationToken)

@@ -198,20 +198,9 @@ public sealed class SessionSnapshotter(TimeProvider? time = null) : ISessionSnap
             return;
         }
 
-        if (!Directory.Exists(source))
+        if (Directory.Exists(source))
         {
-            return;
-        }
-
-        Directory.CreateDirectory(destination);
-        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
-        {
-            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
-        }
-
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
-        {
-            File.Copy(file, Path.Combine(destination, Path.GetRelativePath(source, file)), overwrite: true);
+            FileOps.CopyDirectory(source, destination);
         }
     }
 

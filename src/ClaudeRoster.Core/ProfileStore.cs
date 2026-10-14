@@ -19,6 +19,9 @@ public sealed class RosterState
     public int Version { get; set; } = 1;
     public List<AccountProfile> Profiles { get; set; } = [];
 
+    /// <summary>Copy Claude Code sessions between saved accounts on each switch, so every account lists them all.</summary>
+    public bool ShareCodeSessions { get; set; }
+
     public AccountProfile? Find(string id) => Profiles.FirstOrDefault(profile => profile.Id == id);
 
     public AccountProfile? FindByAccount(string? accountUuid) =>
@@ -36,6 +39,7 @@ public sealed class RosterPaths(string root)
     public string StateFile => Path.Combine(Root, "profiles.json");
     public string ProfilesDirectory => Path.Combine(Root, "profiles");
     public string BackupsDirectory => Path.Combine(Root, "backups");
+    public string SharedSessionsStateFile => Path.Combine(Root, "shared-sessions.json");
 
     public string ProfileDirectory(string profileId) =>
         IsValidProfileId(profileId)

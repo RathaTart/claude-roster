@@ -52,6 +52,20 @@ try
             Console.WriteLine(outcome.Warning ?? "Sign in to the other account in Claude, then run: claude-roster save <name>");
             return 0;
         }
+        case "share" when operands is ["on" or "off"]:
+        {
+            var enable = operands[0] == "on";
+            if (enable && !Confirm(
+                    "Copy Claude Code sessions between all saved accounts on each switch? Continuing a session sends it through " +
+                    "the account you're signed in to; check your employer's policy before sharing work sessions."))
+            {
+                return 1;
+            }
+
+            switcher.SetShareCodeSessions(enable);
+            Console.WriteLine(enable ? "Sessions will be shared from the next switch on." : "Sessions are no longer shared.");
+            return 0;
+        }
         case "rename" when operands.Length == 2:
             switcher.Rename(FindProfile(operands[0]).Id, operands[1]);
             return 0;
@@ -99,6 +113,7 @@ void PrintStatus()
     Console.WriteLine($"Claude running  {running}");
     Console.WriteLine($"Signed in       {signedIn}");
     Console.WriteLine($"Saved accounts  {switcher.ListProfiles().Count}");
+    Console.WriteLine($"Share sessions  {(switcher.ShareCodeSessions ? "on" : "off")}");
     Console.WriteLine($"Roster data     {switcher.Paths.Root}");
     if (LaunchContext.IsStartedFromClaude())
     {
@@ -168,6 +183,7 @@ static void PrintUsage() => Console.WriteLine(
       save <name>            save the account Claude is signed in to
       switch <name>          close Claude, swap accounts, reopen
       add                    save the current account, then open Claude's sign-in screen
+      share on|off           copy Claude Code sessions between accounts on each switch
       rename <name> <new>    rename a saved account
       remove <name>          forget a saved account (not the signed-in one)
 

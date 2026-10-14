@@ -49,6 +49,19 @@ internal static class FakeClaude
         WriteConfig(dataRoot, config);
     }
 
+    public const string OrgA = "a0a0a0a0-0000-4000-8000-000000000001";
+    public const string OrgB = "b0b0b0b0-0000-4000-8000-000000000002";
+
+    /// <summary>Path of a Code tab session file, relative to the data root.</summary>
+    public static string SessionPath(string account, string org, string name) =>
+        Path.Combine(SessionSharing.SessionsFolderName, account, org, name);
+
+    public static void AddSession(string dataRoot, string account, string org, string name, string contents, DateTime writtenUtc)
+    {
+        Write(dataRoot, SessionPath(account, org, name), contents);
+        File.SetLastWriteTimeUtc(Path.Combine(dataRoot, SessionPath(account, org, name)), writtenUtc);
+    }
+
     public static string Read(string dataRoot, string relativePath) => File.ReadAllText(Path.Combine(dataRoot, relativePath));
 
     public static bool Exists(string dataRoot, string relativePath)

@@ -31,7 +31,8 @@
 - **One-click switching.** Claude closes, swaps to the other account's sign-in, and reopens. It takes a few seconds.
 - **Saved sign-ins stay fresh.** Claude refreshes its tokens while you work, so every switch first copies the account you're leaving.
 - **Hard to lose an account.** It backs up before every switch and rolls back automatically if anything fails. It refuses to switch away from an account you haven't saved, or from a sign-in it can't read.
-- **Claude Code sessions stay with their account.** Each account sees its own sessions in the Code tab.
+- **Your setup comes with you.** Skills, plugins you installed, hooks, settings and memory live in `~\.claude`, so every account uses the same ones.
+- **Optionally share Claude Code sessions.** By default each account sees its own sessions in the Code tab. Turn on sharing and every account lists them all.
 - **Local only.** No network calls and no telemetry. Saved sign-ins stay on your PC, readable only by your Windows user.
 - **Scriptable.** A `claude-roster` command line covers everything the tray menu does.
 
@@ -93,6 +94,20 @@ Click an account in the menu and confirm. Claude closes and reopens signed in as
 
 <p><img src="docs/images/confirm-switch.png" alt="Confirmation: Switch Claude to Personal? Claude will close and reopen. 1 running Claude Code session will stop."></p>
 
+### Share Claude Code sessions between accounts (optional)
+
+Claude keeps a separate Code-tab session list for each account. Turn on **Share Code sessions between accounts** in the menu, and each switch makes every account's list the same:
+
+- Sessions started in either account show up in both, and you can continue any of them from either.
+- The most recently changed copy of a session wins, so renames and archiving carry over.
+- A session you delete in one account is deleted in the other.
+- Both lists are backed up before every merge, in the same `backups\` folder as sign-ins.
+
+Only the session list is shared. The conversations themselves already live in `~\.claude`, which every account uses. claude.ai connectors and plugins that come from an account or its organisation stay with that account, so a shared session may not have them all.
+
+> [!CAUTION]
+> Continuing a shared session sends that conversation through the account you're signed in to. If one account belongs to your employer, check its policy before letting work sessions into a personal account. Turning sharing off stops new copies; sessions already copied stay in both accounts.
+
 ### Rename or remove
 
 **Manage accounts** renames or removes saved accounts. Removing an account only deletes its saved sign-in on this PC; the Claude account itself isn't affected. You can't remove the account that's signed in right now.
@@ -125,7 +140,7 @@ The Claude desktop app is an Electron app. Its sign-in lives in a handful of fil
 | `Local State` | the key that encrypts the cookies and tokens; each saved copy keeps the key its data was encrypted with |
 | `config.json` keys `oauth:*`, `lastKnownAccountUuid`, `bootSidebarPlaceholder` | Claude Code tokens, the account id, and the cached sidebar |
 
-**Left alone:** app settings, MCP servers, extensions, caches, and Claude Code sessions. Claude already keeps Code sessions in a separate folder per account.
+**Left alone:** app settings, MCP servers, extensions, caches, and Claude Code sessions. Claude already keeps Code sessions in a separate folder per account; only [session sharing](#share-claude-code-sessions-between-accounts-optional), if you turn it on, copies session files between those folders.
 
 Run `claude-roster plan` to see this list with sizes for your own install. It changes nothing.
 
@@ -155,7 +170,8 @@ Everything is stored under `%APPDATA%\ClaudeRoster`. The folder is restricted to
 | --- | --- |
 | `profiles.json` | account names and ids, no secrets |
 | `profiles\<id>\session\` | each account's saved sign-in |
-| `backups\` | the live sign-in from before each of the last 5 switches |
+| `backups\` | the live sign-in, plus the session lists when sharing is on, from before each of the last 5 switches |
+| `shared-sessions.json` | which sessions each account had at the last merge, so deletions carry over |
 
 > [!CAUTION]
 > **Treat saved sign-ins like passwords.** Don't sync this folder to cloud storage, share it, or attach it to a bug report. Anyone who can read it as your Windows user can use those sessions. The encryption is tied to your Windows account, so the files don't work on another PC or for another user.
@@ -176,6 +192,7 @@ Claude Roster makes no network requests and sends nothing anywhere.
 | `claude-roster save <name>` | save the account Claude is signed in to |
 | `claude-roster switch <name>` | close Claude, swap accounts, reopen |
 | `claude-roster add` | save the current account, then open Claude's sign-in screen |
+| `claude-roster share on\|off` | share Claude Code sessions between accounts on each switch |
 | `claude-roster rename <name> <new>` | rename a saved account |
 | `claude-roster remove <name>` | forget a saved account (not the signed-in one) |
 

@@ -148,6 +148,27 @@ public sealed class AccountSwitcherTests : IDisposable
         Assert.Equal(5, Directory.GetDirectories(Paths.BackupsDirectory).Length);
     }
 
+    [Fact]
+    public async Task Switching_shares_Code_sessions_only_when_turned_on()
+    {
+        var switcher = CreateSwitcher();
+        var (work, personal) = await EnrolTwoAccountsAsync(switcher);
+        var written = DateTime.UtcNow.AddMinutes(-5);
+        AddSession(DataRoot, AccountA, OrgA, "local_work.json", "work", written);
+        AddSession(DataRoot, AccountB, OrgB, "local_personal.json", "personal", written);
+
+        await switcher.SwitchAsync(work.Id);
+        Assert.False(Exists(DataRoot, SessionPath(AccountA, OrgA, "local_personal.json")));
+
+        switcher.SetShareCodeSessions(true);
+        var outcome = await switcher.SwitchAsync(personal.Id);
+
+        Assert.Null(outcome.Warning);
+        Assert.True(Exists(DataRoot, SessionPath(AccountA, OrgA, "local_personal.json")));
+        Assert.True(Exists(DataRoot, SessionPath(AccountB, OrgB, "local_work.json")));
+        Assert.True(switcher.ShareCodeSessions);
+    }
+
     private AccountSwitcher CreateSwitcher(ISessionSnapshotter? snapshots = null) =>
         new(new ClaudeInstall(DataRoot, null, null), Paths, process: _process, snapshots: snapshots);
 

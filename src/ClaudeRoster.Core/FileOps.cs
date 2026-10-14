@@ -56,6 +56,21 @@ internal static class FileOps
 
     public static void MoveDirectory(string source, string destination) => Retry(() => Directory.Move(source, destination));
 
+    /// <summary>Copies a folder's contents into <paramref name="destination"/>, overwriting files that exist.</summary>
+    public static void CopyDirectory(string source, string destination)
+    {
+        Directory.CreateDirectory(destination);
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+        {
+            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+        }
+
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            File.Copy(file, Path.Combine(destination, Path.GetRelativePath(source, file)), overwrite: true);
+        }
+    }
+
     public static void DeleteFile(string path) => Retry(() =>
     {
         if (File.Exists(path))
