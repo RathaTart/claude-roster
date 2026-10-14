@@ -86,8 +86,13 @@ internal sealed class AliasDialog : Form
 
 internal static class StartupRegistration
 {
+    /// <summary>Passed by the sign-in entry: start hidden and only show the icon while Claude is open.</summary>
+    public const string BackgroundArgument = "--background";
+
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string SettingsKey = @"Software\ClaudeRoster";
     private const string ValueName = "ClaudeRoster";
+    private const string DefaultAppliedName = "StartWithWindowsDefaultApplied";
 
     public static bool IsEnabled()
     {
@@ -100,12 +105,35 @@ internal static class StartupRegistration
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);
         if (enabled)
         {
-            key.SetValue(ValueName, $"\"{Environment.ProcessPath}\"");
+            key.SetValue(ValueName, $"\"{Environment.ProcessPath}\" {BackgroundArgument}");
         }
         else
         {
             key.DeleteValue(ValueName, throwOnMissingValue: false);
         }
+    }
+
+    /// <summary>
+    /// Turns Start with Windows on the first time Claude Roster runs; after that the user's choice stands.
+    /// An enabled entry is re-pointed at this copy of the exe, in case it has moved.
+    /// </summary>
+    /// <returns>True when this call turned it on.</returns>
+    public static bool ApplyDefault()
+    {
+        using var settings = Registry.CurrentUser.CreateSubKey(SettingsKey);
+        if (settings.GetValue(DefaultAppliedName) is null)
+        {
+            settings.SetValue(DefaultAppliedName, 1, RegistryValueKind.DWord);
+            SetEnabled(true);
+            return true;
+        }
+
+        if (IsEnabled())
+        {
+            SetEnabled(true);
+        }
+
+        return false;
     }
 }
 

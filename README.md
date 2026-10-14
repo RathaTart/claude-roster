@@ -56,6 +56,8 @@ Get-FileHash .\ClaudeRoster.exe -Algorithm SHA256
 
 The icon appears in the system tray next to the clock. On Windows 11 it may be hidden under the **^** arrow. To keep it on the taskbar, open **Settings → Personalization → Taskbar → Other system tray icons** and turn **ClaudeRoster** on.
 
+**You only need to start it once.** From then on it starts with Windows, waits out of sight, and its icon appears whenever Claude is open. To change that, use **Start with Windows** in its menu.
+
 > [!IMPORTANT]
 > Start Claude Roster from File Explorer or the Start menu, **not from a terminal inside a Claude Code session**. Switching closes Claude, which would also stop anything started from inside it. Claude Roster detects this and refuses to switch.
 
@@ -103,7 +105,7 @@ Click an account in the menu and confirm. Claude closes and reopens signed in as
 > **Don't use Claude's own Log out for a saved account.** Logging out ends that session on Anthropic's side, so the saved copy stops working too. To add or change accounts, use **Add another account…** instead.
 
 - **Running Claude Code sessions stop when you switch**, because Claude closes. They're still there when you switch back.
-- **Start with Windows** is off by default. When on, it adds an entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+- **Start with Windows** is turned on the first time Claude Roster runs. It adds an entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. When started that way, Claude Roster stays hidden until Claude opens, and hides again after Claude quits (never in the middle of a switch). Turn it off in the menu and it stays off. Starting `ClaudeRoster.exe` yourself always shows the icon.
 - **The terminal `claude` CLI isn't covered.** It keeps its own login in `~\.claude`. To use a second account there, give it a separate config folder: `$env:CLAUDE_CONFIG_DIR = "$HOME\.claude-personal"; claude`.
 - **Work accounts follow work rules.** If one of your accounts belongs to an employer, check its policy on personal AI accounts on work machines. Each account stays under its own plan, limits and terms.
 
@@ -160,7 +162,7 @@ Everything is stored under `%APPDATA%\ClaudeRoster`. The folder is restricted to
 
 Claude Roster makes no network requests and sends nothing anywhere.
 
-**To uninstall:** turn off **Start with Windows** if you enabled it, choose **Exit** from the menu, then delete `ClaudeRoster.exe` and `%APPDATA%\ClaudeRoster`.
+**To uninstall:** open Claude so the icon shows, turn off **Start with Windows**, choose **Exit** from the menu, then delete `ClaudeRoster.exe`, `%APPDATA%\ClaudeRoster` and the registry key `HKCU\Software\ClaudeRoster`.
 
 ## Command line
 

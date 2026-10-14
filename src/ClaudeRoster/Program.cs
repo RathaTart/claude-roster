@@ -5,16 +5,24 @@ namespace ClaudeRoster;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
-        using var instance = new Mutex(initiallyOwned: true, @"Local\ClaudeRoster.Tray", out var isFirstInstance);
-        ApplicationConfiguration.Initialize();
+        var background = args.Contains(StartupRegistration.BackgroundArgument, StringComparer.OrdinalIgnoreCase);
 
+        // A second launch hands over to the running copy (bringing its icon out) instead of starting another.
+        using var showRequest = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\ClaudeRoster.Show");
+        using var instance = new Mutex(initiallyOwned: true, @"Local\ClaudeRoster.Tray", out var isFirstInstance);
         if (!isFirstInstance)
         {
-            Dialogs.Info("Claude Roster is already running. Look for its icon in the system tray (it may be under the ^ arrow).");
+            if (!background)
+            {
+                showRequest.Set();
+            }
+
             return;
         }
+
+        ApplicationConfiguration.Initialize();
 
         if (LaunchContext.IsStartedFromClaude())
         {
@@ -27,10 +35,19 @@ internal static class Program
         var install = ClaudeInstall.Locate();
         if (install is null)
         {
-            Dialogs.Error("Couldn't find the Claude desktop app's data folder. Install Claude, sign in once, then start Claude Roster again.");
+            if (!background)
+            {
+                Dialogs.Error("Couldn't find the Claude desktop app's data folder. Install Claude, sign in once, then start Claude Roster again.");
+            }
+
             return;
         }
 
-        Application.Run(new TrayContext(new AccountSwitcher(install, RosterPaths.Default())));
+        var startupJustEnabled = StartupRegistration.ApplyDefault();
+        Application.Run(new TrayContext(
+            new AccountSwitcher(install, RosterPaths.Default()),
+            hideWhileClaudeClosed: background,
+            startupJustEnabled: startupJustEnabled,
+            showRequest: showRequest));
     }
 }

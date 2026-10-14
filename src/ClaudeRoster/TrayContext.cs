@@ -15,19 +15,35 @@ internal sealed class TrayContext : ApplicationContext
     private static readonly TimeSpan SignInWatchLimit = TimeSpan.FromMinutes(20);
 
     private readonly AccountSwitcher _switcher;
+    private readonly ClaudeProcess _claude;
+    private readonly bool _startupJustEnabled;
     private readonly Icon _icon = TrayIcon.Create();
     private readonly ContextMenuStrip _menu = new();
     private readonly NotifyIcon _tray;
     private readonly System.Windows.Forms.Timer _signInWatch = new() { Interval = 2000 };
+    private readonly System.Windows.Forms.Timer _claudeWatch = new() { Interval = 2000 };
+    private readonly RegisteredWaitHandle? _showRequestWait;
+    private bool _hideWhileClaudeClosed;
     private DateTime _signInWatchEnds;
     private bool _busy;
     private bool _prompting;
+    private bool _greeted;
 
-    public TrayContext(AccountSwitcher switcher)
+    /// <param name="hideWhileClaudeClosed">Started at sign-in: keep the icon out of the tray until Claude opens.</param>
+    /// <param name="startupJustEnabled">Start with Windows was just turned on by default; say so once.</param>
+    /// <param name="showRequest">Signalled by a second launch, which wants the icon shown.</param>
+    public TrayContext(
+        AccountSwitcher switcher,
+        bool hideWhileClaudeClosed = false,
+        bool startupJustEnabled = false,
+        EventWaitHandle? showRequest = null)
     {
         _switcher = switcher;
+        _claude = new ClaudeProcess(switcher.Install);
+        _hideWhileClaudeClosed = hideWhileClaudeClosed;
+        _startupJustEnabled = startupJustEnabled;
         _menu.Opening += (_, _) => RebuildMenu();
-        _tray = new NotifyIcon { Icon = _icon, Text = AppName, ContextMenuStrip = _menu, Visible = true };
+        _tray = new NotifyIcon { Icon = _icon, Text = AppName, ContextMenuStrip = _menu };
         _tray.MouseUp += (_, e) =>
         {
             if (e.Button == MouseButtons.Left)
@@ -36,10 +52,20 @@ internal sealed class TrayContext : ApplicationContext
             }
         };
         _signInWatch.Tick += (_, _) => CheckForNewSignIn();
+        _claudeWatch.Tick += (_, _) => UpdateVisibility();
 
-        if (SafeStatus() is { IsUnsaved: true })
+        if (showRequest is not null)
         {
-            Notify("Open the Claude Roster menu and save the account signed in to Claude, so you can switch back to it later.");
+            // Creating the menu above installed the WinForms context; marshal the request back onto this thread.
+            var ui = SynchronizationContext.Current!;
+            _showRequestWait = ThreadPool.RegisterWaitForSingleObject(
+                showRequest, (_, _) => ui.Post(_ => OnShowRequested(), null), null, Timeout.Infinite, executeOnlyOnce: false);
+        }
+
+        UpdateVisibility();
+        if (_hideWhileClaudeClosed)
+        {
+            _claudeWatch.Start();
         }
     }
 
@@ -58,6 +84,8 @@ internal sealed class TrayContext : ApplicationContext
     {
         if (disposing)
         {
+            _showRequestWait?.Unregister(null);
+            _claudeWatch.Dispose();
             _signInWatch.Dispose();
             _tray.Visible = false;
             _tray.Dispose();
@@ -66,6 +94,59 @@ internal sealed class TrayContext : ApplicationContext
         }
 
         base.Dispose(disposing);
+    }
+
+    /// <summary>
+    /// Shows the icon while Claude is open. It also stays put mid-switch (Claude is briefly closed) and while
+    /// waiting for a new sign-in, so it never vanishes in the middle of something.
+    /// </summary>
+    private void UpdateVisibility()
+    {
+        var visible = !_hideWhileClaudeClosed || _busy || _prompting || _signInWatch.Enabled || _claude.IsRunning();
+        if (visible == _tray.Visible)
+        {
+            return;
+        }
+
+        _tray.Visible = visible;
+        if (visible)
+        {
+            Greet();
+        }
+    }
+
+    /// <summary>The first time the icon appears, point out anything the user should know.</summary>
+    private void Greet()
+    {
+        if (_greeted)
+        {
+            return;
+        }
+
+        _greeted = true;
+        var unsaved = SafeStatus() is { IsUnsaved: true };
+        if (_startupJustEnabled)
+        {
+            Notify("Claude Roster now starts with Windows and appears whenever Claude is open. You can turn this off in its menu." +
+                   (unsaved ? " Open the menu to save the account you're signed in to." : ""));
+        }
+        else if (unsaved)
+        {
+            Notify("Open the Claude Roster menu and save the account signed in to Claude, so you can switch back to it later.");
+        }
+    }
+
+    private void OnShowRequested()
+    {
+        _hideWhileClaudeClosed = false;
+        _claudeWatch.Stop();
+        if (_tray.Visible)
+        {
+            Notify("Claude Roster is already running. Click this icon to switch accounts.");
+            return;
+        }
+
+        UpdateVisibility();
     }
 
     private void RebuildMenu()

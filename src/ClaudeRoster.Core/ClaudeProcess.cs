@@ -67,6 +67,9 @@ public sealed class ClaudeProcess(ClaudeInstall install) : IClaudeProcess
         && id.StartsWith("AnthropicPBC.Claude_", StringComparison.OrdinalIgnoreCase)
         && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '!' or '-');
 
+    /// <summary>A cheaper check than <see cref="Capture"/> for polling.</summary>
+    public bool IsRunning() => FindDesktop(NativeProcesses.Snapshot()).Count > 0;
+
     public ClaudeRunState Capture()
     {
         var all = NativeProcesses.Snapshot();
