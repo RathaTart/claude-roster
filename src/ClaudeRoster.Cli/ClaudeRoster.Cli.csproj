@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>claude-roster</AssemblyName>
+    <RootNamespace>ClaudeRoster.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClaudeRoster.Core\ClaudeRoster.Core.csproj" />
+  </ItemGroup>
+
+</Project>

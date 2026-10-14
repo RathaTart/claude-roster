@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>ClaudeRoster.Screenshots</AssemblyName>
+    <RootNamespace>ClaudeRoster.Screenshots</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ClaudeRoster\ClaudeRoster.csproj" />
+  </ItemGroup>
+
+</Project>
