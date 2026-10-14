@@ -13,6 +13,8 @@
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white">
   <img alt=".NET 9" src="https://img.shields.io/badge/.NET-9-512BD4?logo=dotnet&logoColor=white">
   <img alt="Local only" src="https://img.shields.io/badge/network-none-2F5D7C">
+  <a href="https://github.com/RathaTart/claude-roster/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RathaTart/claude-roster"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
 <p align="center">
@@ -41,15 +43,18 @@
 
 ## Install
 
-```powershell
-git clone https://github.com/RathaTart/claude-roster.git
-```
+**[Download ClaudeRoster.exe](https://github.com/RathaTart/claude-roster/releases/latest/download/ClaudeRoster.exe)** from the latest release. Save it in a permanent folder and double-click it in File Explorer. There's no installer.
+
+The [release page](https://github.com/RathaTart/claude-roster/releases/latest) also has the `claude-roster.exe` command line, a ZIP with both programs plus the README and license, and `SHA256SUMS.txt` to verify any download:
 
 ```powershell
-dotnet publish claude-roster\src\ClaudeRoster -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o claude-roster\publish
+Get-FileHash .\ClaudeRoster.exe -Algorithm SHA256
 ```
 
-Copy `publish\ClaudeRoster.exe` to a permanent folder and double-click it in File Explorer. The icon appears in the system tray next to the clock. On Windows 11 it may be hidden under the **^** arrow. To keep it on the taskbar, open **Settings → Personalization → Taskbar → Other system tray icons** and turn **ClaudeRoster** on.
+> [!NOTE]
+> Releases aren't code-signed, so the first launch may show **Windows protected your PC**. Check the file's hash against `SHA256SUMS.txt`, then choose **More info → Run anyway**. Prefer to build it yourself? See [Build from source](#build-from-source).
+
+The icon appears in the system tray next to the clock. On Windows 11 it may be hidden under the **^** arrow. To keep it on the taskbar, open **Settings → Personalization → Taskbar → Other system tray icons** and turn **ClaudeRoster** on.
 
 > [!IMPORTANT]
 > Start Claude Roster from File Explorer or the Start menu, **not from a terminal inside a Claude Code session**. Switching closes Claude, which would also stop anything started from inside it. Claude Roster detects this and refuses to switch.
@@ -159,11 +164,7 @@ Claude Roster makes no network requests and sends nothing anywhere.
 
 ## Command line
 
-`claude-roster.exe` drives the same logic from a terminal. Publish it the same way as the tray app:
-
-```powershell
-dotnet publish claude-roster\src\ClaudeRoster.Cli -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o claude-roster\publish
-```
+`claude-roster.exe` drives the same logic from a terminal. [Download it](https://github.com/RathaTart/claude-roster/releases/latest/download/claude-roster.exe) from the latest release, or build it from source.
 
 | Command | What it does |
 | --- | --- |
@@ -190,13 +191,25 @@ Roster data     C:\Users\you\AppData\Roaming\ClaudeRoster
 
 ## Build from source
 
+Needs the [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0).
+
 ```powershell
-dotnet build ClaudeRoster.sln -c Release
+git clone https://github.com/RathaTart/claude-roster.git
 ```
 
 ```powershell
-dotnet test ClaudeRoster.sln -c Release
+dotnet test claude-roster\ClaudeRoster.sln -c Release
 ```
+
+```powershell
+dotnet publish claude-roster\src\ClaudeRoster -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o claude-roster\publish
+```
+
+```powershell
+dotnet publish claude-roster\src\ClaudeRoster.Cli -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o claude-roster\publish
+```
+
+Both programs end up in `claude-roster\publish`.
 
 | Project | What it is |
 | --- | --- |
@@ -217,3 +230,7 @@ The tests and the screenshot tool run on throwaway data. For manual testing, `CL
 ## Credits
 
 - The approach follows [roster-companion](https://github.com/tanagornf/roster-companion) by tanagornf, which does the same job for the ChatGPT desktop app.
+
+## License
+
+[MIT](LICENSE) © 2026 RathaTart

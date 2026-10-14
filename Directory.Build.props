@@ -5,5 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Version>0.1.0</Version>
+    <Product>Claude Roster</Product>
+    <Copyright>Copyright (c) 2026 RathaTart</Copyright>
   </PropertyGroup>
 </Project>
