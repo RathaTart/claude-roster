@@ -102,7 +102,18 @@ internal sealed class TrayContext : ApplicationContext
     /// </summary>
     private void UpdateVisibility()
     {
-        var visible = !_hideWhileClaudeClosed || _busy || _prompting || _signInWatch.Enabled || _claude.IsRunning();
+        bool visible;
+        try
+        {
+            visible = !_hideWhileClaudeClosed || _busy || _prompting || _signInWatch.Enabled || _claude.IsRunning();
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // The process list can fail when Windows is out of memory (e.g. "paging file is too small"). Keep the
+            // icon as it is and try again on the next tick instead of crashing.
+            return;
+        }
+
         if (visible == _tray.Visible)
         {
             return;
