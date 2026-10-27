@@ -22,6 +22,9 @@ public sealed class RosterState
     /// <summary>Copy Claude Code sessions between saved accounts on each switch, so every account lists them all.</summary>
     public bool ShareCodeSessions { get; set; }
 
+    /// <summary>Show the account button pinned to the top left of Claude's window.</summary>
+    public bool ShowTitleBarButton { get; set; } = true;
+
     public AccountProfile? Find(string id) => Profiles.FirstOrDefault(profile => profile.Id == id);
 
     public AccountProfile? FindByAccount(string? accountUuid) =>

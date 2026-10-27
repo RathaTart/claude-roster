@@ -23,6 +23,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _signInWatch = new() { Interval = 2000 };
     private readonly System.Windows.Forms.Timer _claudeWatch = new() { Interval = 2000 };
     private readonly RegisteredWaitHandle? _showRequestWait;
+    private readonly TitleBarButton? _titleBar;
     private bool _hideWhileClaudeClosed;
     private DateTime _signInWatchEnds;
     private bool _busy;
@@ -32,11 +33,13 @@ internal sealed class TrayContext : ApplicationContext
     /// <param name="hideWhileClaudeClosed">Started at sign-in: keep the icon out of the tray until Claude opens.</param>
     /// <param name="startupJustEnabled">Start with Windows was just turned on by default; say so once.</param>
     /// <param name="showRequest">Signalled by a second launch, which wants the icon shown.</param>
+    /// <param name="titleBarButton">Also offer the menu from a button on Claude's own title bar.</param>
     public TrayContext(
         AccountSwitcher switcher,
         bool hideWhileClaudeClosed = false,
         bool startupJustEnabled = false,
-        EventWaitHandle? showRequest = null)
+        EventWaitHandle? showRequest = null,
+        bool titleBarButton = false)
     {
         _switcher = switcher;
         _claude = new ClaudeProcess(switcher.Install);
@@ -67,6 +70,12 @@ internal sealed class TrayContext : ApplicationContext
         {
             _claudeWatch.Start();
         }
+
+        if (titleBarButton)
+        {
+            _titleBar = new TitleBarButton(_claude, _menu, TitleBarLabel);
+            _titleBar.SetEnabled(SafeTitleBarSetting());
+        }
     }
 
     /// <summary>The tray menu; it rebuilds itself every time it opens. Exposed for the screenshot tool.</summary>
@@ -85,6 +94,7 @@ internal sealed class TrayContext : ApplicationContext
         if (disposing)
         {
             _showRequestWait?.Unregister(null);
+            _titleBar?.Dispose();
             _claudeWatch.Dispose();
             _signInWatch.Dispose();
             _tray.Visible = false;
@@ -232,6 +242,13 @@ internal sealed class TrayContext : ApplicationContext
         var share = new ToolStripMenuItem("Share Code sessions between accounts") { Checked = SafeShareSetting(), Enabled = !_busy };
         share.Click += (_, _) => ToggleSharing(!share.Checked);
         _menu.Items.Add(share);
+        if (_titleBar is not null)
+        {
+            var titleBar = new ToolStripMenuItem("Show account button in Claude") { Checked = SafeTitleBarSetting() };
+            titleBar.Click += (_, _) => ToggleTitleBar(!titleBar.Checked);
+            _menu.Items.Add(titleBar);
+        }
+
         var startup = new ToolStripMenuItem("Start with Windows") { Checked = StartupRegistration.IsEnabled() };
         startup.Click += (_, _) => StartupRegistration.SetEnabled(!startup.Checked);
         _menu.Items.Add(startup);
@@ -398,6 +415,53 @@ internal sealed class TrayContext : ApplicationContext
         {
             return false;
         }
+    }
+
+    private void ToggleTitleBar(bool enable)
+    {
+        try
+        {
+            _switcher.SetShowTitleBarButton(enable);
+            _titleBar?.SetEnabled(enable);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            Dialogs.Error(exception.Message);
+        }
+    }
+
+    private bool SafeTitleBarSetting()
+    {
+        try
+        {
+            return _switcher.ShowTitleBarButton;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>What the title bar button says. Polled every second, so it skips the process scan.</summary>
+    private string TitleBarLabel()
+    {
+        LiveStatus? status;
+        try
+        {
+            status = _switcher.PeekStatus();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            status = null;
+        }
+
+        return status switch
+        {
+            null or { IsUnidentified: true } => AppName,
+            { Profile: { } profile } => profile.Alias,
+            { AccountUuid: not null } => "Account not saved",
+            _ => "Signed out",
+        };
     }
 
     private void Rename(AccountProfile profile)

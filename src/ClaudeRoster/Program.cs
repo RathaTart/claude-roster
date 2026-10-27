@@ -48,6 +48,7 @@ internal static class Program
             new AccountSwitcher(install, RosterPaths.Default()),
             hideWhileClaudeClosed: background,
             startupJustEnabled: startupJustEnabled,
-            showRequest: showRequest));
+            showRequest: showRequest,
+            titleBarButton: true));
     }
 }

@@ -28,6 +28,7 @@
 
 ## Features
 
+- **Switch from inside Claude.** A small account button sits at the top left of Claude's window, next to its back and forward arrows, and follows the window when you move it. Click it for the same menu as the tray icon. Turn it off with **Show account button in Claude**.
 - **One-click switching.** Claude closes, swaps to the other account's sign-in, and reopens. It takes a few seconds.
 - **Saved sign-ins stay fresh.** Claude refreshes its tokens while you work, so every switch first copies the account you're leaving.
 - **Hard to lose an account.** It backs up before every switch and rolls back automatically if anything fails. It refuses to switch away from an account you haven't saved, or from a sign-in it can't read.

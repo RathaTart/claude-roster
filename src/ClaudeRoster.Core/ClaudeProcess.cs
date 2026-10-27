@@ -70,6 +70,9 @@ public sealed class ClaudeProcess(ClaudeInstall install) : IClaudeProcess
     /// <summary>A cheaper check than <see cref="Capture"/> for polling.</summary>
     public bool IsRunning() => FindDesktop(NativeProcesses.Snapshot()).Count > 0;
 
+    /// <summary>The desktop app's own processes, for finding its windows.</summary>
+    public IReadOnlyList<int> DesktopProcessIds() => FindDesktop(NativeProcesses.Snapshot()).Select(process => process.Id).ToList();
+
     public ClaudeRunState Capture()
     {
         var all = NativeProcesses.Snapshot();

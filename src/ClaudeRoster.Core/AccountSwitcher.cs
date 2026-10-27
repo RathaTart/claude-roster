@@ -69,7 +69,19 @@ public sealed class AccountSwitcher
         _store.Save(state);
     }
 
+    public bool ShowTitleBarButton => _store.Load().ShowTitleBarButton;
+
+    public void SetShowTitleBarButton(bool enabled)
+    {
+        var state = _store.Load();
+        state.ShowTitleBarButton = enabled;
+        _store.Save(state);
+    }
+
     public LiveStatus GetStatus() => GetStatus(_store.Load());
+
+    /// <summary>Who is signed in, without looking at Claude's processes; cheap enough to poll.</summary>
+    public LiveStatus PeekStatus() => GetStatus(_store.Load(), ClaudeRunState.NotRunning);
 
     /// <summary>
     /// Adds the account Claude is signed in to now. Its sign-in is copied the next time you switch away from it,
@@ -156,7 +168,9 @@ public sealed class AccountSwitcher
             state, before.Process, () => _snapshots.ClearSignIn(_install.DataRoot), target: null, cancellationToken);
     }
 
-    private LiveStatus GetStatus(RosterState state)
+    private LiveStatus GetStatus(RosterState state) => GetStatus(state, _process.Capture());
+
+    private LiveStatus GetStatus(RosterState state, ClaudeRunState process)
     {
         JsonObject? config;
         try
@@ -171,7 +185,7 @@ public sealed class AccountSwitcher
         var accountUuid = config is null ? null : ClaudeConfig.ReadAccountUuid(config);
         // Tokens without an account id means the format changed under us; refuse rather than guess who owns them.
         var unidentified = config is null || (accountUuid is null && ClaudeConfig.HasTokens(config));
-        return new LiveStatus(accountUuid, state.FindByAccount(accountUuid), unidentified, _process.Capture());
+        return new LiveStatus(accountUuid, state.FindByAccount(accountUuid), unidentified, process);
     }
 
     private LiveStatus Preflight(RosterState state)
