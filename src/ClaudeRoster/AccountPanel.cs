@@ -16,6 +16,10 @@ internal sealed record PanelSeparator : PanelItem;
 /// <param name="WeeklyLeft">Percent of the 7-day limit left, when known.</param>
 /// <param name="More">Rename / remove and the like, shown behind a ⋯ button.</param>
 /// <param name="UsageStale">The usage is an old reading that may be behind, so its meters are greyed out.</param>
+/// <param name="SessionResets">Time until the 5-hour window resets ("2h45m"), when known.</param>
+/// <param name="WeeklyResets">Time until the weekly window resets ("3d4h"), when known.</param>
+/// <param name="Color">The account's own colour; null picks one from its name.</param>
+/// <param name="DailyPeaks">The highest session use of each of the last 7 days, oldest first; null where unknown.</param>
 internal sealed record PanelAccount(
     string Name,
     string Detail,
@@ -25,9 +29,27 @@ internal sealed record PanelAccount(
     bool Enabled,
     Action OnClick,
     IReadOnlyList<PanelItem> More,
-    bool UsageStale = false) : PanelItem;
+    bool UsageStale = false,
+    string? SessionResets = null,
+    string? WeeklyResets = null,
+    Color? Color = null,
+    IReadOnlyList<int?>? DailyPeaks = null) : PanelItem
+{
+    public bool HasHistory => DailyPeaks?.Count(peak => peak is not null) >= 2;
+}
 
-internal sealed record PanelAction(string Glyph, string Text, bool Enabled, Action OnClick, bool Danger = false) : PanelItem;
+/// <param name="Swatch">Draws this colour in place of the glyph (the colour choices).</param>
+/// <param name="Selected">Ticked: the choice in effect.</param>
+/// <param name="Submenu">Opens these items beside it instead of running an action.</param>
+internal sealed record PanelAction(
+    string Glyph,
+    string Text,
+    bool Enabled,
+    Action OnClick,
+    bool Danger = false,
+    Color? Swatch = null,
+    bool Selected = false,
+    IReadOnlyList<PanelItem>? Submenu = null) : PanelItem;
 
 /// <summary>A setting with a switch. The panel stays open when it's flipped.</summary>
 internal sealed record PanelToggle(string Text, bool On, bool Enabled, Action<bool> OnChange) : PanelItem;
@@ -42,6 +64,7 @@ internal sealed class AccountPanel : Form
     private const int Pad96 = 6;
     private const string MoreGlyph = "";
     private const string CheckGlyph = "";
+    private const string ChevronGlyph = "›";
 
     private readonly Func<IReadOnlyList<PanelItem>> _build;
     private readonly AccountPanel? _parent;
@@ -130,18 +153,66 @@ internal sealed class AccountPanel : Form
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (e.KeyCode == Keys.Escape)
+        switch (e.KeyCode)
         {
-            if (_parent is null)
-            {
-                CloseAll();
-            }
-            else
-            {
-                Close();
-                _parent.Activate();
-            }
+            case Keys.Escape:
+            case Keys.Left when _parent is not null:
+                if (_parent is null)
+                {
+                    CloseAll();
+                }
+                else
+                {
+                    Close();
+                    _parent.Activate();
+                }
+
+                break;
+            case Keys.Down or Keys.Up or Keys.Tab:
+                MoveHover(e.KeyCode == Keys.Up || (e.KeyCode == Keys.Tab && e.Shift) ? -1 : 1);
+                break;
+            case Keys.Enter or Keys.Space when _hover >= 0:
+                Activate(_hover, viaMore: false, byKeyboard: true);
+                break;
+            case Keys.Right when _hover >= 0 && _rows[_hover].Item is PanelAccount { More.Count: > 0 } or PanelAction { Submenu: not null }:
+                Activate(_hover, viaMore: true, byKeyboard: true);
+                break;
         }
+    }
+
+    /// <summary>Arrow keys and Tab walk the rows that do something, wrapping round.</summary>
+    private void MoveHover(int step)
+    {
+        if (!_rows.Exists(row => IsInteractive(row.Item)))
+        {
+            return;
+        }
+
+        var index = _hover < 0 ? (step > 0 ? -1 : _rows.Count) : _hover;
+        do
+        {
+            index = (index + step + _rows.Count) % _rows.Count;
+        }
+        while (!IsInteractive(_rows[index].Item));
+
+        _hover = index;
+        _hoverMore = false;
+        Invalidate();
+    }
+
+    protected override bool IsInputKey(Keys keyData) =>
+        keyData is Keys.Up or Keys.Down or Keys.Left or Keys.Right or Keys.Tab or (Keys.Tab | Keys.Shift) || base.IsInputKey(keyData);
+
+    protected override bool ProcessDialogKey(Keys keyData)
+    {
+        // A form uses Tab and the arrows to move focus between controls; this one has none, so they're the panel's.
+        if (keyData is Keys.Up or Keys.Down or Keys.Left or Keys.Right or Keys.Tab or (Keys.Tab | Keys.Shift))
+        {
+            OnKeyDown(new KeyEventArgs(keyData));
+            return true;
+        }
+
+        return base.ProcessDialogKey(keyData);
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
@@ -182,19 +253,26 @@ internal sealed class AccountPanel : Form
         }
 
         var index = _rows.FindIndex(row => row.Bounds.Contains(e.Location) && IsInteractive(row.Item));
-        if (index < 0)
+        if (index >= 0)
         {
-            return;
+            Activate(index, viaMore: MoreBounds(_rows[index].Bounds).Contains(e.Location), byKeyboard: false);
         }
+    }
 
+    /// <summary>Does what a row does: switch, run an action, open its ⋯ or submenu, or flip a switch.</summary>
+    private void Activate(int index, bool viaMore, bool byKeyboard)
+    {
         var (item, bounds) = _rows[index];
         switch (item)
         {
-            case PanelAccount { More.Count: > 0 } account when MoreBounds(bounds).Contains(e.Location):
-                OpenChild(account.More, RectangleToScreen(MoreBounds(bounds)));
+            case PanelAccount { More.Count: > 0 } account when viaMore:
+                OpenChild(account.More, RectangleToScreen(MoreBounds(bounds)), byKeyboard);
                 break;
             case PanelAccount { Enabled: true } account:
                 Choose(account.OnClick);
+                break;
+            case PanelAction { Submenu: { } submenu }:
+                OpenChild(submenu, RectangleToScreen(bounds), byKeyboard);
                 break;
             case PanelAction action:
                 Choose(action.OnClick);
@@ -295,7 +373,7 @@ internal sealed class AccountPanel : Form
                 PanelHeader { IsNote: true } => Px(30),
                 PanelHeader => Px(28),
                 PanelSeparator => Px(9),
-                PanelAccount account => Px(account.SessionLeft is null && account.WeeklyLeft is null ? 54 : 90),
+                PanelAccount account => Px(AccountHeight(account)),
                 _ => Px(36),
             };
             _rows.Add((item, new Rectangle(Px(Pad96), y, width - Px(Pad96) * 2, height)));
@@ -306,12 +384,24 @@ internal sealed class AccountPanel : Form
         _hover = -1;
     }
 
-    private void OpenChild(IReadOnlyList<PanelItem> items, Rectangle anchor)
+    /// <summary>Name and detail, then a line per usage meter, then the 7-day history when there's enough of it.</summary>
+    private static int AccountHeight(PanelAccount account)
+    {
+        var meters = (account.SessionLeft is null ? 0 : 1) + (account.WeeklyLeft is null ? 0 : 1);
+        var height = meters == 0 ? 54 : 54 + meters * 18;
+        return account.HasHistory ? height + 18 : height;
+    }
+
+    private void OpenChild(IReadOnlyList<PanelItem> items, Rectangle anchor, bool byKeyboard)
     {
         _child?.Close();
         _child = new AccountPanel(() => items, this);
         _child.FormClosed += (_, _) => _child = null;
         _child.Open(anchor.Location, size => new Point(anchor.Right - size.Width, anchor.Bottom + Px(4)));
+        if (byKeyboard)
+        {
+            _child.MoveHover(1);
+        }
     }
 
     /// <summary>Closes the panel first, so a confirmation or name dialog opens on its own.</summary>
@@ -379,9 +469,9 @@ internal sealed class AccountPanel : Form
         var fonts = _fonts!;
         var text = account.Enabled || account.Active ? _palette.Text : _palette.Dim;
 
-        // Avatar: initials on a colour picked from the name, ringed in the accent when signed in.
+        // Avatar: initials on the account's colour, ringed in the accent when signed in.
         var avatar = new Rectangle(bounds.Left + Px(8), bounds.Top + Px(10), Px(34), Px(34));
-        using (var fill = new SolidBrush(AvatarColor(account.Name)))
+        using (var fill = new SolidBrush(account.Color ?? DefaultColor(account.Name)))
         {
             graphics.FillEllipse(fill, avatar);
         }
@@ -419,32 +509,67 @@ internal sealed class AccountPanel : Form
         }
 
         var line = bounds.Top + Px(52);
-        foreach (var (label, left100) in new[] { ("Session", account.SessionLeft), ("Week", account.WeeklyLeft) })
+        foreach (var (label, left100, resets) in new[] { ("Session", account.SessionLeft, account.SessionResets), ("Week", account.WeeklyLeft, account.WeeklyResets) })
         {
             if (left100 is null)
             {
                 continue;
             }
 
-            PaintMeter(graphics, label, left100.Value, account.UsageStale, Rectangle.FromLTRB(left, line, bounds.Right - Px(12), line + Px(16)));
+            PaintMeter(graphics, label, left100.Value, account.UsageStale, resets, Rectangle.FromLTRB(left, line, bounds.Right - Px(12), line + Px(16)));
             line += Px(18);
+        }
+
+        if (account.HasHistory)
+        {
+            PaintHistory(graphics, account.DailyPeaks!, Rectangle.FromLTRB(left, line, bounds.Right - Px(12), line + Px(16)));
+        }
+    }
+
+    /// <summary>"7 days ▂▅▇▃▁▆▄ daily peak": the highest session use each day, so heavy days stand out.</summary>
+    private void PaintHistory(Graphics graphics, IReadOnlyList<int?> peaks, Rectangle bounds)
+    {
+        var fonts = _fonts!;
+        var labelWidth = Px(50);
+        DrawText(graphics, "7 days", fonts.Small, new Rectangle(bounds.Left, bounds.Top, labelWidth, bounds.Height), _palette.Dim);
+        DrawText(graphics, "daily peak", fonts.Small, Rectangle.FromLTRB(bounds.Right - Px(70), bounds.Top, bounds.Right, bounds.Bottom),
+            _palette.Dim, TextFormatFlags.Right);
+
+        var bar = Px(9);
+        var gap = Px(4);
+        var x = bounds.Left + labelWidth;
+        var bottom = bounds.Bottom - Px(2);
+        var tallest = bounds.Height - Px(3);
+        foreach (var peak in peaks)
+        {
+            var height = peak is { } value ? Math.Max(Px(2), tallest * Math.Clamp(value, 0, 100) / 100) : Px(2);
+            var color = peak is null ? _palette.Track : peak >= 90 ? _palette.Danger : peak >= 75 ? _palette.Warning : _palette.Accent;
+            FillRound(graphics, new Rectangle(x, bottom - height, bar, height), Px(2), color);
+            x += bar + gap;
         }
     }
 
     /// <summary>
-    /// "Session ▬▬▬▬▬▬▭▭ 93% left": what's left of a limit, coloured as it runs low. An old reading is greyed out, so
-    /// it doesn't pass for the live figure.
+    /// "Session ▬▬▬▬▬▬▭▭ 93% left ↻2h45m": what's left of a limit, coloured as it runs low, and when it resets. An old
+    /// reading is greyed out, so it doesn't pass for the live figure.
     /// </summary>
-    private void PaintMeter(Graphics graphics, string label, int left, bool stale, Rectangle bounds)
+    private void PaintMeter(Graphics graphics, string label, int left, bool stale, string? resets, Rectangle bounds)
     {
         var fonts = _fonts!;
         var labelWidth = Px(50);
+        var resetsWidth = resets is null ? 0 : Px(58);
         var valueWidth = Px(58);
+        var valueRight = bounds.Right - resetsWidth;
         DrawText(graphics, label, fonts.Small, new Rectangle(bounds.Left, bounds.Top, labelWidth, bounds.Height), stale ? _palette.Disabled : _palette.Dim);
         DrawText(graphics, $"{left}% left", fonts.Small,
-            new Rectangle(bounds.Right - valueWidth, bounds.Top, valueWidth, bounds.Height), stale ? _palette.Dim : _palette.Text, TextFormatFlags.Right);
+            new Rectangle(valueRight - valueWidth, bounds.Top, valueWidth, bounds.Height), stale ? _palette.Dim : _palette.Text, TextFormatFlags.Right);
+        if (resets is not null)
+        {
+            DrawText(graphics, $"↻{resets}", fonts.Small,
+                new Rectangle(valueRight, bounds.Top, resetsWidth, bounds.Height), stale ? _palette.Disabled : _palette.Dim, TextFormatFlags.Right);
+        }
 
-        var track = Rectangle.FromLTRB(bounds.Left + labelWidth, bounds.Top + bounds.Height / 2 - Px(2), bounds.Right - valueWidth - Px(6), bounds.Top + bounds.Height / 2 + Px(2));
+        var track = Rectangle.FromLTRB(bounds.Left + labelWidth, bounds.Top + bounds.Height / 2 - Px(2), valueRight - valueWidth - Px(6), bounds.Top + bounds.Height / 2 + Px(2));
         FillRound(graphics, track, track.Height / 2, _palette.Track);
         if (left > 0)
         {
@@ -457,8 +582,28 @@ internal sealed class AccountPanel : Form
     private void PaintAction(Graphics graphics, PanelAction action, Rectangle bounds)
     {
         var color = !action.Enabled ? _palette.Disabled : action.Danger ? _palette.Danger : _palette.Text;
-        DrawGlyph(graphics, action.Glyph, _fonts!.Glyph, new Rectangle(bounds.Left + Px(8), bounds.Top, Px(20), bounds.Height), color);
-        DrawText(graphics, action.Text, _fonts.Body, Rectangle.FromLTRB(bounds.Left + Px(38), bounds.Top, bounds.Right - Px(8), bounds.Bottom), color);
+        var icon = new Rectangle(bounds.Left + Px(8), bounds.Top, Px(20), bounds.Height);
+        if (action.Swatch is { } swatch)
+        {
+            var dot = new Rectangle(icon.Left + Px(3), icon.Top + (icon.Height - Px(14)) / 2, Px(14), Px(14));
+            using var fill = new SolidBrush(swatch);
+            graphics.FillEllipse(fill, dot);
+        }
+        else
+        {
+            DrawGlyph(graphics, action.Glyph, _fonts!.Glyph, icon, color);
+        }
+
+        DrawText(graphics, action.Text, _fonts!.Body, Rectangle.FromLTRB(bounds.Left + Px(38), bounds.Top, bounds.Right - Px(30), bounds.Bottom), color);
+        var marker = new Rectangle(bounds.Right - Px(28), bounds.Top, Px(20), bounds.Height);
+        if (action.Selected)
+        {
+            DrawGlyph(graphics, CheckGlyph, _fonts.Glyph, marker, _palette.Accent);
+        }
+        else if (action.Submenu is not null)
+        {
+            DrawGlyph(graphics, ChevronGlyph, _fonts.Small, marker, _palette.Dim);
+        }
     }
 
     private void PaintToggle(Graphics graphics, PanelToggle toggle, Rectangle bounds)
@@ -513,15 +658,24 @@ internal sealed class AccountPanel : Form
         return initials.ToUpperInvariant();
     }
 
-    private static Color AvatarColor(string name)
+    /// <summary>The colours an account can wear: muted, so white initials read on all of them.</summary>
+    internal static readonly IReadOnlyList<(string Name, Color Color)> Swatches =
+    [
+        ("Clay", Color.FromArgb(0xC1, 0x5F, 0x3C)),
+        ("Blue", Color.FromArgb(0x3E, 0x7C, 0xB1)),
+        ("Green", Color.FromArgb(0x5B, 0x8C, 0x5A)),
+        ("Purple", Color.FromArgb(0x8E, 0x5B, 0xA8)),
+        ("Gold", Color.FromArgb(0xB0, 0x86, 0x2E)),
+        ("Teal", Color.FromArgb(0x2F, 0x8C, 0x8C)),
+        ("Rose", Color.FromArgb(0xB4, 0x4F, 0x72)),
+        ("Slate", Color.FromArgb(0x5E, 0x6B, 0x7A)),
+    ];
+
+    /// <summary>The colour an account gets until one is chosen: picked from its name, so it stays put.</summary>
+    internal static Color DefaultColor(string name)
     {
-        Color[] colors =
-        [
-            Color.FromArgb(0xC1, 0x5F, 0x3C), Color.FromArgb(0x3E, 0x7C, 0xB1), Color.FromArgb(0x5B, 0x8C, 0x5A),
-            Color.FromArgb(0x8E, 0x5B, 0xA8), Color.FromArgb(0xB0, 0x86, 0x2E), Color.FromArgb(0x2F, 0x8C, 0x8C),
-        ];
         var hash = name.Aggregate(17, (sum, c) => unchecked(sum * 31 + char.ToUpperInvariant(c)));
-        return colors[(hash & int.MaxValue) % colors.Length];
+        return Swatches[(hash & int.MaxValue) % 6].Color;
     }
 
     private int Px(int pixels96) => (int)Math.Round(pixels96 * _scale);

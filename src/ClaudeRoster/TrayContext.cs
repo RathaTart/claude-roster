@@ -566,7 +566,9 @@ internal sealed class TrayContext : ApplicationContext
                 Enabled: !_busy && ready && !active,
                 async () => await SwitchToAsync(profile),
                 more,
-                stale));
+                stale,
+                sample?.SessionResetsIn(now),
+                sample?.WeeklyResetsIn(now)));
         }
 
         if (anyStale)

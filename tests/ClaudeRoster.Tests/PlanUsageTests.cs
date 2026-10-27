@@ -46,6 +46,19 @@ public sealed class PlanUsageTests
     }
 
     [Fact]
+    public void Reset_countdowns_read_like_the_status_line()
+    {
+        var sample = new UsageSample(Start, 35, 57, Start.AddHours(2).AddMinutes(45), Start.AddDays(3).AddHours(4));
+
+        Assert.Equal("2h45m", sample.SessionResetsIn(Start));
+        Assert.Equal("45m", sample.SessionResetsIn(Start.AddHours(2)));
+        Assert.Equal("3d4h", sample.WeeklyResetsIn(Start));
+        Assert.Null(sample.SessionResetsIn(Start.AddHours(3)));
+        Assert.Null(new UsageSample(Start, 35, 57).SessionResetsIn(Start));
+        Assert.Equal("Session 65% left ↻2h45m · Week 43% left ↻3d4h", sample.Summary(Start));
+    }
+
+    [Fact]
     public void Without_the_add_on_the_history_is_used()
     {
         using var temp = new TempDirectory();

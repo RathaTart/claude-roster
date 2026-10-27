@@ -57,10 +57,30 @@ public sealed record UsageSample(
     /// <summary>"Session 93% left · Week 47% left", for menus and the command line.</summary>
     public string Summary(DateTimeOffset now) =>
         HasLimits
-            ? string.Join(" · ", new[] { ("Session", SessionLeft(now)), ("Week", WeeklyLeft(now)) }
+            ? string.Join(" · ", new[] { ("Session", SessionLeft(now), SessionResetsIn(now)), ("Week", WeeklyLeft(now), WeeklyResetsIn(now)) }
                 .Where(part => part.Item2 is not null)
-                .Select(part => $"{part.Item1} {part.Item2}% left"))
+                .Select(part => $"{part.Item1} {part.Item2}% left" + (part.Item3 is null ? "" : $" ↻{part.Item3}")))
             : "No usage limits reported";
+
+    /// <summary>Time until the 5-hour window resets ("2h45m"), when the reading says and it hasn't passed.</summary>
+    public string? SessionResetsIn(DateTimeOffset now) => Countdown(SessionResetsAt, now);
+
+    public string? WeeklyResetsIn(DateTimeOffset now) => Countdown(WeeklyResetsAt, now);
+
+    /// <summary>"45m", "2h45m", "3d4h", as cc-hud and Claude Code's status line write them.</summary>
+    private static string? Countdown(DateTimeOffset? resetsAt, DateTimeOffset now)
+    {
+        if (resetsAt is not { } reset || reset <= now)
+        {
+            return null;
+        }
+
+        var left = reset - now;
+        var minutes = (int)Math.Ceiling(left.TotalMinutes);
+        return minutes < 60 ? $"{minutes}m"
+            : minutes < 24 * 60 ? (minutes % 60 == 0 ? $"{minutes / 60}h" : $"{minutes / 60}h{minutes % 60}m")
+            : $"{minutes / (24 * 60)}d{minutes % (24 * 60) / 60}h";
+    }
 
     /// <summary>"just now", "12 min ago", "3 h ago", "2 days ago".</summary>
     public string Age(DateTimeOffset now)
