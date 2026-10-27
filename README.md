@@ -30,12 +30,12 @@
 
 - **Switch from inside Claude.** An account button sits at the top left of Claude's window, next to its back and forward arrows, and follows the window when you move it. It shows who's signed in and how much of the session limit is left. Click it to open the account panel.
 - **One-click switching.** Claude closes, swaps to the other account's sign-in, and reopens. It takes a few seconds.
-- **See usage left for every account.** The panel shows the session (5-hour) and weekly limits left for each saved account, from the readings Claude itself records.
+- **See usage left for every account.** The panel shows the session (5-hour) and weekly limits left for each saved account, with when each reading was taken. Add the small [Claude Code add-on](#live-usage-from-claude-code) and the signed-in account's figures stay live as you work.
 - **Saved sign-ins stay fresh.** Claude refreshes its tokens while you work, so every switch first copies the account you're leaving.
 - **Hard to lose an account.** It backs up before every switch and rolls back automatically if anything fails. It refuses to switch away from an account you haven't saved, or from a sign-in it can't read.
 - **Your setup comes with you.** Skills, plugins you installed, hooks, settings and memory live in `~\.claude`, so every account uses the same ones.
 - **Optionally share Claude Code sessions.** By default each account sees its own sessions in the Code tab. Turn on sharing and every account lists them all.
-- **Local only.** No network calls and no telemetry. Saved sign-ins stay on your PC, readable only by your Windows user.
+- **Local only.** No network calls and no telemetry, add-on included. Saved sign-ins stay on your PC, readable only by your Windows user.
 - **Scriptable.** A `claude-roster` command line covers everything the tray menu does.
 - **Clean uninstall.** One menu item removes Claude Roster, its saved accounts and its startup entry, and leaves Claude signed in.
 
@@ -43,6 +43,7 @@
 
 - Windows 10 or 11 (x64)
 - The Claude desktop app: the Microsoft Store version (tested) or the classic installer
+- Optional, for live usage: the [Claude Code](https://docs.claude.com/en/docs/claude-code) command line, to install the add-on
 - The [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0), which comes with the .NET 9 SDK
 
 ## Install
@@ -64,6 +65,8 @@ The icon appears in the system tray next to the clock. On Windows 11 it may be h
 
 > [!IMPORTANT]
 > Start Claude Roster from File Explorer or the Start menu, **not from a terminal inside a Claude Code session**. Switching closes Claude, which would also stop anything started from inside it. Claude Roster detects this and refuses to switch.
+
+**Upgrading:** choose **Exit** from Claude Roster's menu, replace `ClaudeRoster.exe` with the new one, and start it once. Saved accounts and settings carry over.
 
 ## How to use
 
