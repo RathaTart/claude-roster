@@ -133,7 +133,8 @@ void PrintList()
         Console.WriteLine($"{marker} {profile.Alias,-24} {Mask(profile.AccountUuid)}{saved}");
         if (usage.TryGetValue(profile.Id, out var sample))
         {
-            Console.WriteLine($"  {"",-24} {sample.Summary(now)} ({sample.Age(now)})");
+            var old = sample.HasLimits && sample.IsStale(now) ? ", may be behind Claude's usage page" : "";
+            Console.WriteLine($"  {"",-24} {sample.Summary(now)} (reading from {sample.Taken(now)}{old})");
         }
     }
 }

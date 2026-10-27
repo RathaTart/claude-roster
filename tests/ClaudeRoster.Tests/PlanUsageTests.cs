@@ -57,6 +57,22 @@ public sealed class PlanUsageTests
         Assert.Null(new UsageSample(Start, null, null).SessionLeft(Start));
     }
 
+    [Fact]
+    public void Readings_say_when_they_were_taken_and_go_stale_after_a_few_minutes()
+    {
+        var sample = new UsageSample(Start, 7, 53);
+
+        Assert.False(sample.IsStale(Start.AddMinutes(5)));
+        Assert.True(sample.IsStale(Start.AddMinutes(6)));
+        Assert.Equal("just now", sample.Taken(Start.AddSeconds(30), TimeZoneInfo.Utc));
+        Assert.Equal("08:00, 36 min ago", sample.Taken(Start.AddMinutes(36), TimeZoneInfo.Utc));
+        Assert.Equal("Tue 08:00, 2 days ago", sample.Taken(Start.AddDays(2), TimeZoneInfo.Utc));
+        Assert.Equal("Oct 27, 9 days ago", sample.Taken(Start.AddDays(9), TimeZoneInfo.Utc));
+        Assert.Equal("36m", sample.ShortAge(Start.AddMinutes(36)));
+        Assert.Equal("3h", sample.ShortAge(Start.AddHours(3.5)));
+        Assert.Equal("2d", sample.ShortAge(Start.AddDays(2)));
+    }
+
     private static AccountProfile Profile(string account, DateTimeOffset lastUsed) => new()
     {
         Id = Guid.NewGuid().ToString("N"),

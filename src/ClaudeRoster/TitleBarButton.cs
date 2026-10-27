@@ -7,7 +7,8 @@ namespace ClaudeRoster;
 
 /// <param name="Detail">Shown dimmer after the name, e.g. the session usage left.</param>
 /// <param name="Tip">The tooltip, e.g. the full usage summary.</param>
-internal sealed record TitleBarLabel(string Text, string? Detail, string Tip);
+/// <param name="DetailStale">The detail is an old reading, so it's drawn fainter.</param>
+internal sealed record TitleBarLabel(string Text, string? Detail, string Tip, bool DetailStale = false);
 
 /// <summary>
 /// The account button pinned to the top left of Claude's window, beside its back and forward arrows. It follows the
@@ -187,7 +188,7 @@ internal sealed class TitleBarButton : Form
             // The detail (usage left) always shows; the name gives way to it when space runs out.
             var detailWidth = Math.Min(TextRenderer.MeasureText(detail, _textFont, Size.Empty, line).Width, text.Width / 2);
             var detailBounds = Rectangle.FromLTRB(text.Right - detailWidth, 0, text.Right, Height);
-            TextRenderer.DrawText(graphics, detail, _textFont, detailBounds, palette.Dim, line | TextFormatFlags.Right);
+            TextRenderer.DrawText(graphics, detail, _textFont, detailBounds, _text.DetailStale ? palette.Faint : palette.Dim, line | TextFormatFlags.Right);
             text = Rectangle.FromLTRB(text.Left, 0, detailBounds.Left - Px(Gap96), Height);
         }
 
@@ -477,15 +478,15 @@ internal sealed class TitleBarButton : Form
     }
 
     /// <summary>Matched to Claude's title bar (#111 behind 28 px buttons with a #494949 edge).</summary>
-    private sealed record Palette(Color Back, Color Hover, Color Border, Color Text, Color Dim)
+    private sealed record Palette(Color Back, Color Hover, Color Border, Color Text, Color Dim, Color Faint)
     {
         public static readonly Palette Dark = new(
             Color.FromArgb(0x1C, 0x1C, 0x1C), Color.FromArgb(0x34, 0x34, 0x34), Color.FromArgb(0x3A, 0x3A, 0x3A),
-            Color.FromArgb(0xCC, 0xC9, 0xC9), Color.FromArgb(0x8A, 0x88, 0x86));
+            Color.FromArgb(0xCC, 0xC9, 0xC9), Color.FromArgb(0x8A, 0x88, 0x86), Color.FromArgb(0x62, 0x61, 0x5F));
 
         public static readonly Palette Light = new(
             Color.FromArgb(0xF7, 0xF6, 0xF2), Color.FromArgb(0xEA, 0xE8, 0xE1), Color.FromArgb(0xDA, 0xD8, 0xD0),
-            Color.FromArgb(0x3D, 0x3D, 0x3A), Color.FromArgb(0x7A, 0x78, 0x72));
+            Color.FromArgb(0x3D, 0x3D, 0x3A), Color.FromArgb(0x7A, 0x78, 0x72), Color.FromArgb(0xA8, 0xA6, 0xA0));
     }
 
     private const int WmDpiChanged = 0x02E0;

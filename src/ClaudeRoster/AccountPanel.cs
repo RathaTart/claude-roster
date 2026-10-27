@@ -11,10 +11,11 @@ internal sealed record PanelHeader(string Text, bool IsNote = false) : PanelItem
 
 internal sealed record PanelSeparator : PanelItem;
 
-/// <param name="Detail">The line under the name, e.g. "Signed in · updated 2 min ago".</param>
+/// <param name="Detail">The line under the name, e.g. "Signed in · reading from 15:54, 36 min ago".</param>
 /// <param name="SessionLeft">Percent of the 5-hour limit left, when known.</param>
 /// <param name="WeeklyLeft">Percent of the 7-day limit left, when known.</param>
 /// <param name="More">Rename / remove and the like, shown behind a ⋯ button.</param>
+/// <param name="UsageStale">The usage is an old reading that may be behind, so its meters are greyed out.</param>
 internal sealed record PanelAccount(
     string Name,
     string Detail,
@@ -23,7 +24,8 @@ internal sealed record PanelAccount(
     bool Active,
     bool Enabled,
     Action OnClick,
-    IReadOnlyList<PanelItem> More) : PanelItem;
+    IReadOnlyList<PanelItem> More,
+    bool UsageStale = false) : PanelItem;
 
 internal sealed record PanelAction(string Glyph, string Text, bool Enabled, Action OnClick, bool Danger = false) : PanelItem;
 
@@ -424,27 +426,31 @@ internal sealed class AccountPanel : Form
                 continue;
             }
 
-            PaintMeter(graphics, label, left100.Value, Rectangle.FromLTRB(left, line, bounds.Right - Px(12), line + Px(16)));
+            PaintMeter(graphics, label, left100.Value, account.UsageStale, Rectangle.FromLTRB(left, line, bounds.Right - Px(12), line + Px(16)));
             line += Px(18);
         }
     }
 
-    /// <summary>"Session ▬▬▬▬▬▬▭▭ 93% left": what's left of a limit, coloured as it runs low.</summary>
-    private void PaintMeter(Graphics graphics, string label, int left, Rectangle bounds)
+    /// <summary>
+    /// "Session ▬▬▬▬▬▬▭▭ 93% left": what's left of a limit, coloured as it runs low. An old reading is greyed out, so
+    /// it doesn't pass for the live figure.
+    /// </summary>
+    private void PaintMeter(Graphics graphics, string label, int left, bool stale, Rectangle bounds)
     {
         var fonts = _fonts!;
         var labelWidth = Px(50);
         var valueWidth = Px(58);
-        DrawText(graphics, label, fonts.Small, new Rectangle(bounds.Left, bounds.Top, labelWidth, bounds.Height), _palette.Dim);
+        DrawText(graphics, label, fonts.Small, new Rectangle(bounds.Left, bounds.Top, labelWidth, bounds.Height), stale ? _palette.Disabled : _palette.Dim);
         DrawText(graphics, $"{left}% left", fonts.Small,
-            new Rectangle(bounds.Right - valueWidth, bounds.Top, valueWidth, bounds.Height), _palette.Text, TextFormatFlags.Right);
+            new Rectangle(bounds.Right - valueWidth, bounds.Top, valueWidth, bounds.Height), stale ? _palette.Dim : _palette.Text, TextFormatFlags.Right);
 
         var track = Rectangle.FromLTRB(bounds.Left + labelWidth, bounds.Top + bounds.Height / 2 - Px(2), bounds.Right - valueWidth - Px(6), bounds.Top + bounds.Height / 2 + Px(2));
         FillRound(graphics, track, track.Height / 2, _palette.Track);
         if (left > 0)
         {
             var filled = track with { Width = Math.Max(track.Height, track.Width * left / 100) };
-            FillRound(graphics, filled, track.Height / 2, left > 25 ? _palette.Accent : left > 10 ? _palette.Warning : _palette.Danger);
+            var color = stale ? _palette.Disabled : left > 25 ? _palette.Accent : left > 10 ? _palette.Warning : _palette.Danger;
+            FillRound(graphics, filled, track.Height / 2, color);
         }
     }
 

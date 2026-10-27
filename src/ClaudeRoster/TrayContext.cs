@@ -464,11 +464,19 @@ internal sealed class TrayContext : ApplicationContext
         var now = DateTimeOffset.UtcNow;
         var sample = status?.Profile is { } signedIn && SafeUsage().TryGetValue(signedIn.Id, out var found) ? found : null;
         var left = sample?.SessionLeft(now);
+        var stale = sample?.IsStale(now) == true;
         return status switch
         {
             null or { IsUnidentified: true } => new(AppName, null, "Switch Claude account (Claude Roster)"),
-            { Profile: { } profile } => new(profile.Alias, left is null ? null : $"{left}%",
-                sample is { HasLimits: true } ? $"{profile.Alias}: {sample.Summary(now)}" : $"Signed in as {profile.Alias}"),
+            // An old reading carries its age ("93% · 36m") so it can't pass for the live figure.
+            { Profile: { } profile } => new(
+                profile.Alias,
+                left is null ? null : stale ? $"{left}% · {sample!.ShortAge(now)}" : $"{left}%",
+                sample is { HasLimits: true }
+                    ? $"{profile.Alias}: {sample.Summary(now)}\nClaude's reading from {sample.Taken(now)}" +
+                      (stale ? ". Claude's usage page may show more." : "")
+                    : $"Signed in as {profile.Alias}",
+                stale),
             { AccountUuid: not null } => new("Account not saved", null, "Open to save the account signed in to Claude"),
             _ => new("Signed out", null, "Claude is signed out"),
         };
@@ -536,11 +544,14 @@ internal sealed class TrayContext : ApplicationContext
 
         var usage = SafeUsage();
         var now = DateTimeOffset.UtcNow;
+        var anyStale = false;
         foreach (var profile in profiles)
         {
             var active = status?.Profile?.Id == profile.Id;
             var ready = active || _switcher.HasSavedSignIn(profile);
             usage.TryGetValue(profile.Id, out var sample);
+            var stale = sample is { HasLimits: true } && sample.IsStale(now);
+            anyStale |= stale;
             var more = new List<PanelItem>
             {
                 new PanelAction(Glyphs.Rename, "Rename…", !_busy, () => Rename(profile)),
@@ -554,7 +565,14 @@ internal sealed class TrayContext : ApplicationContext
                 active,
                 Enabled: !_busy && ready && !active,
                 async () => await SwitchToAsync(profile),
-                more));
+                more,
+                stale));
+        }
+
+        if (anyStale)
+        {
+            // Claude only records a reading now and then; its own usage page has the live figures.
+            items.Add(new PanelHeader("Grey figures are old readings from Claude", IsNote: true));
         }
 
         items.Add(new PanelSeparator());
@@ -586,11 +604,11 @@ internal sealed class TrayContext : ApplicationContext
 
     private static string AccountDetail(bool active, bool ready, UsageSample? sample, DateTimeOffset now) => (active, sample) switch
     {
-        (true, { HasLimits: true }) => $"Signed in · usage {sample.Age(now)}",
+        (true, { HasLimits: true }) => $"Signed in · reading from {sample.Taken(now)}",
         (true, not null) => "Signed in · no usage limits reported",
         (true, null) => "Signed in",
         _ when !ready => "Sign-in not saved yet",
-        (false, { HasLimits: true }) => $"Usage as of {sample.Age(now)}",
+        (false, { HasLimits: true }) => $"Reading from {sample.Taken(now)}",
         (false, not null) => $"No usage limits reported · {sample.Age(now)}",
         _ => "No usage recorded yet",
     };

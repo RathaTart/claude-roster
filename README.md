@@ -108,8 +108,10 @@ Click an account and confirm. Claude closes and reopens signed in as that accoun
 Each account in the panel shows two bars: what's left of the **session** (5-hour) limit and of the **weekly** limit. They turn amber below 25% and red below 10%. The account button in Claude shows the session figure, and hovering it shows both.
 
 - The numbers come from `plan-usage-history.json`, where Claude records your plan usage. Claude Roster reads that file and makes no network calls.
+- **Claude only records a reading now and then**, for example when it starts. It doesn't record one when you open its own usage page, so these figures can lag behind it.
+- **Every figure says when Claude took it**, e.g. *reading from 15:54, 36 min ago*. Readings older than 5 minutes are greyed out, and the button adds their age (*93% · 36m*). For live numbers, open Claude's own usage page.
 - Claude records readings per organization, not per account, so each account gets the readings taken while it was the one signed in.
-- An account you're not signed in to shows its last reading and how old it is. Once 5 hours (session) or 7 days (weekly) have passed since then, that limit has reset, so it shows as fully available.
+- An account you're not signed in to shows its last reading. Once 5 hours (session) or 7 days (weekly) have passed since then, that limit has reset, so it shows as fully available.
 - Some plans have no limits for Claude to report. Those accounts show **No usage limits reported**.
 
 ### Share Claude Code sessions between accounts (optional)
@@ -241,9 +243,9 @@ Roster data     C:\Users\you\AppData\Roaming\ClaudeRoster
 
 > claude-roster list
   Personal                 22222222…
-                           Session 100% left · Week 78% left (2 days ago)
+                           Session 100% left · Week 78% left (reading from Mon 09:12, 2 days ago, may be behind Claude's usage page)
 * Work                     11111111…
-                           Session 82% left · Week 59% left (4 min ago)
+                           Session 82% left · Week 59% left (reading from 14:30, 2 min ago)
 ```
 
 ## Build from source
@@ -283,7 +285,7 @@ The tests and the screenshot tool run on throwaway data. For manual testing, `CL
 - Claude's sign-in storage isn't a documented interface, so a Claude update can change it. When that happens, expect Claude Roster to refuse to switch rather than corrupt anything; the storage list in `SessionSnapshotter` and `ClaudeConfig` then needs updating.
 - One account is active at a time. It doesn't run two Claude windows side by side.
 - The account button is placed for Claude's current title bar layout, beside the back and forward arrows. If a Claude update moves those, the button may need repositioning (the offsets are at the top of `TitleBarButton.cs`).
-- Usage is only as fresh as Claude's last reading. The file format isn't documented either; if it changes, accounts simply show no usage.
+- Usage is only as fresh as Claude's last reading, which can be well behind Claude's own usage page; old readings are greyed out. The file format isn't documented either; if it changes, accounts simply show no usage.
 - The panel and button follow the Windows app theme. Claude's own appearance setting can't be read from outside.
 - The Microsoft Store install is tested. The classic installer (`%LOCALAPPDATA%\AnthropicClaude`) is supported by path rules but hasn't been tested.
 

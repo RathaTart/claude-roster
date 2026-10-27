@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -11,7 +12,32 @@ public sealed record UsageSample(DateTimeOffset At, int? SessionUsed, int? Weekl
     public static readonly TimeSpan SessionWindow = TimeSpan.FromHours(5);
     public static readonly TimeSpan WeeklyWindow = TimeSpan.FromDays(7);
 
+    /// <summary>
+    /// Claude only records a reading now and then (when it starts, for one), so anything older than this may be well
+    /// behind what Claude's own usage page shows.
+    /// </summary>
+    public static readonly TimeSpan FreshFor = TimeSpan.FromMinutes(5);
+
     public bool HasLimits => SessionUsed is not null || WeeklyUsed is not null;
+
+    public bool IsStale(DateTimeOffset now) => now - At > FreshFor;
+
+    /// <summary>When Claude took the reading: "just now", "15:54, 36 min ago", "Mon 15:54, 2 days ago", "Oct 20, 9 days ago".</summary>
+    public string Taken(DateTimeOffset now, TimeZoneInfo? zone = null)
+    {
+        if (now - At < TimeSpan.FromMinutes(1))
+        {
+            return "just now";
+        }
+
+        zone ??= TimeZoneInfo.Local;
+        var local = TimeZoneInfo.ConvertTime(At, zone);
+        var today = TimeZoneInfo.ConvertTime(now, zone).Date;
+        // The rest of the UI is English, so day and month names are too.
+        var format = local.Date == today ? "HH:mm" : today - local.Date < TimeSpan.FromDays(7) ? "ddd HH:mm" : "MMM d";
+        var clock = local.ToString(format, CultureInfo.InvariantCulture);
+        return $"{clock}, {Age(now)}";
+    }
 
     /// <summary>Percent left now. A reading older than its window has reset since, so it's all left.</summary>
     public int? SessionLeft(DateTimeOffset now) => Left(SessionUsed, now - At >= SessionWindow);
@@ -35,6 +61,15 @@ public sealed record UsageSample(DateTimeOffset At, int? SessionUsed, int? Weekl
             : age.TotalDays < 1 ? $"{(int)age.TotalHours} h ago"
             : (int)age.TotalDays == 1 ? "1 day ago"
             : $"{(int)age.TotalDays} days ago";
+    }
+
+    /// <summary>"36m", "2h", "3d": the age for tight spots like the title bar button.</summary>
+    public string ShortAge(DateTimeOffset now)
+    {
+        var age = now - At;
+        return age.TotalHours < 1 ? $"{Math.Max(1, (int)age.TotalMinutes)}m"
+            : age.TotalDays < 1 ? $"{(int)age.TotalHours}h"
+            : $"{(int)age.TotalDays}d";
     }
 
     private static int? Left(int? used, bool reset) => used is null ? null : reset ? 100 : Math.Clamp(100 - used.Value, 0, 100);
