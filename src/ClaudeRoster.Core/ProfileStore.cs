@@ -34,8 +34,10 @@ public sealed class RosterState
     /// <summary>Warn when the signed-in account runs low on usage, and suggest one with more left.</summary>
     public bool UsageAlerts { get; set; } = true;
 
-    /// <summary>Ctrl+Alt+R opens the account panel from anywhere.</summary>
-    public bool Shortcut { get; set; } = true;
+    /// <summary>
+    /// The keyboard shortcut that opens the account panel: a combination's name, "Off", or null for the first free one.
+    /// </summary>
+    public string? ShortcutKeys { get; set; }
 
     /// <summary>Ask GitHub once a day whether there's a newer release: Claude Roster's only network request, off unless chosen.</summary>
     public bool CheckForUpdates { get; set; }

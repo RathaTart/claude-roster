@@ -181,6 +181,13 @@ internal sealed class AccountPanel : Form
         }
     }
 
+    /// <summary>Highlights the first row that does something, for a panel opened from the keyboard.</summary>
+    public void FocusFirst()
+    {
+        _hover = -1;
+        MoveHover(1);
+    }
+
     /// <summary>Arrow keys and Tab walk the rows that do something, wrapping round.</summary>
     private void MoveHover(int step)
     {

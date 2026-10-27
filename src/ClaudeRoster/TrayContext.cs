@@ -24,6 +24,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _usageWatch = new() { Interval = 30_000 };
     private readonly HashSet<string> _alerted = [];
     private Action? _balloonAction;
+    private readonly GlobalShortcut _shortcut = new();
     private readonly RegisteredWaitHandle? _showRequestWait;
     private readonly TitleBarButton? _titleBar;
     private AccountPanel? _panel;
@@ -60,6 +61,8 @@ internal sealed class TrayContext : ApplicationContext
         };
         _signInWatch.Tick += (_, _) => CheckForNewSignIn();
         _claudeWatch.Tick += (_, _) => UpdateVisibility();
+        _shortcut.Pressed += OnShortcut;
+        _shortcut.Apply(SafeShortcutChoice());
         _usageWatch.Tick += (_, _) => CheckUsage();
         _usageWatch.Start();
         // A balloon that offers something (a switch) does it when clicked; any other balloon clears the offer.
@@ -111,6 +114,7 @@ internal sealed class TrayContext : ApplicationContext
             _titleBar?.Dispose();
             _claudeWatch.Dispose();
             _usageWatch.Dispose();
+            _shortcut.Dispose();
             _signInWatch.Dispose();
             _tray.Visible = false;
             _tray.Dispose();
@@ -508,6 +512,76 @@ internal sealed class TrayContext : ApplicationContext
         }
     }
 
+    /// <summary>
+    /// The shortcut: opens the panel under Claude's account button when Claude is in view, else at the pointer, ready
+    /// for the arrow keys; pressed again, closes it.
+    /// </summary>
+    private void OnShortcut()
+    {
+        if (_panel is not null)
+        {
+            _panel.Close();
+            return;
+        }
+
+        if (_titleBar is { Visible: true } button)
+        {
+            ShowPanel(panel => panel.ShowBelow(button.Bounds));
+        }
+        else
+        {
+            ShowPanel(panel => panel.ShowAbove(Cursor.Position));
+        }
+
+        _panel?.FocusFirst();
+    }
+
+    /// <summary>"Shortcut: Ctrl+Alt+K ›", choosing among the combinations, automatic (the first free) and off.</summary>
+    private PanelAction ShortcutItem()
+    {
+        var choice = SafeShortcutChoice();
+        var current = _shortcut.Current;
+        var text = choice == GlobalShortcut.Off ? "Shortcut: off"
+            : current is null ? $"Shortcut: {choice ?? "none free"} (taken by another app)"
+            : $"Shortcut: {current}";
+        var choices = new List<PanelItem>
+        {
+            new PanelAction(Glyphs.Keyboard, choice is null && current is not null ? $"Automatic ({current})" : "Automatic", true,
+                () => SetShortcut(null), Selected: choice is null),
+        };
+        choices.AddRange(GlobalShortcut.Choices.Select(entry => (PanelItem)new PanelAction(
+            Glyphs.Keyboard, entry.Name, true, () => SetShortcut(entry.Name), Selected: choice == entry.Name)));
+        choices.Add(new PanelAction(Glyphs.Keyboard, "Off", true, () => SetShortcut(GlobalShortcut.Off), Selected: choice == GlobalShortcut.Off));
+        return new PanelAction(Glyphs.Keyboard, text, true, () => { }, Submenu: choices);
+    }
+
+    private void SetShortcut(string? choice)
+    {
+        ChangeSetting(state => state.ShortcutKeys = choice);
+        if (_shortcut.Apply(choice) is { } keys)
+        {
+            Notify($"{keys} now opens the Claude Roster panel.");
+        }
+        else if (choice != GlobalShortcut.Off)
+        {
+            Notify(choice is null
+                ? "Every shortcut Claude Roster offers is taken by another app."
+                : $"{choice} is taken by another app. Choose another shortcut.");
+        }
+    }
+
+    private string? SafeShortcutChoice()
+    {
+        try
+        {
+            return _switcher.Settings.ShortcutKeys;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Opens the account panel; a click that just closed it (on the same button) leaves it closed.</summary>
     private void ShowPanel(Action<AccountPanel> open)
     {
@@ -617,6 +691,7 @@ internal sealed class TrayContext : ApplicationContext
 
         items.Add(new PanelToggle("Warn when usage runs low", SafeSetting(state => state.UsageAlerts, fallback: true), true,
             on => ChangeSetting(state => state.UsageAlerts = on)));
+        items.Add(ShortcutItem());
         items.Add(new PanelToggle("Start with Windows", StartupRegistration.IsEnabled(), true, StartupRegistration.SetEnabled));
         items.Add(new PanelSeparator());
         items.Add(new PanelAction(Glyphs.Folder, "Open Claude Roster folder", true, OpenDataFolder));
@@ -642,6 +717,7 @@ internal sealed class TrayContext : ApplicationContext
         public const string Save = "\uE74E";
         public const string Rename = "\uE8AC";
         public const string Tag = "\uE8EC";
+        public const string Keyboard = "\uE765";
         public const string Color = "\uE790";
         public const string Delete = "\uE74D";
         public const string Folder = "\uE8B7";
