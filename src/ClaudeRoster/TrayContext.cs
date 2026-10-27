@@ -255,6 +255,7 @@ internal sealed class TrayContext : ApplicationContext
         startup.Click += (_, _) => StartupRegistration.SetEnabled(!startup.Checked);
         _menu.Items.Add(startup);
         AddItem(_menu.Items, "Open Claude Roster folder", OpenDataFolder);
+        AddItem(_menu.Items, "Uninstall Claude Roster…", Uninstall);
         AddItem(_menu.Items, "Exit", ExitThread);
     }
 
@@ -579,6 +580,7 @@ internal sealed class TrayContext : ApplicationContext
         items.Add(new PanelToggle("Start with Windows", StartupRegistration.IsEnabled(), true, StartupRegistration.SetEnabled));
         items.Add(new PanelSeparator());
         items.Add(new PanelAction(Glyphs.Folder, "Open Claude Roster folder", true, OpenDataFolder));
+        items.Add(new PanelAction(Glyphs.Delete, "Uninstall Claude Roster…", !_busy, Uninstall, Danger: true));
         items.Add(new PanelAction(Glyphs.Exit, "Exit", true, ExitThread));
     }
 
@@ -602,6 +604,69 @@ internal sealed class TrayContext : ApplicationContext
         public const string Delete = "\uE74D";
         public const string Folder = "\uE8B7";
         public const string Exit = "\uE7E8";
+    }
+
+    internal static string UninstallConfirmation(string? signedIn) =>
+        "Uninstall Claude Roster?\n\n" +
+        "This deletes every saved account and backup on this PC, turns off Start with Windows and removes Claude Roster itself. It can't be undone.\n\n" +
+        $"Claude stays signed in to {(signedIn is null ? "its current account" : signedIn)}. To use your other accounts again, sign in to them in Claude. " +
+        "Claude's own data and your Claude Code sessions aren't touched.";
+
+    /// <summary>
+    /// Removes everything: the saved accounts first (if that fails, nothing else is touched, so it can be retried),
+    /// then the registry entries, then the exe once this process has exited.
+    /// </summary>
+    private void Uninstall()
+    {
+        if (_busy || !Dialogs.Confirm(UninstallConfirmation(SafeStatus()?.Profile?.Alias)))
+        {
+            return;
+        }
+
+        try
+        {
+            _switcher.DeleteAllData();
+        }
+        catch (Exception exception) when (exception is ClaudeRosterException or IOException or UnauthorizedAccessException)
+        {
+            Dialogs.Error($"Couldn't delete the saved accounts, so nothing was uninstalled: {exception.Message}");
+            return;
+        }
+
+        try
+        {
+            StartupRegistration.Forget();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            Dialogs.Error($"The saved accounts are gone, but Claude Roster's registry settings couldn't all be removed: {exception.Message}");
+        }
+
+        ScheduleSelfDelete();
+        ExitThread();
+    }
+
+    /// <summary>
+    /// A running exe can't delete itself, so a hidden cmd waits a few seconds for this one to exit, then deletes it,
+    /// the command-line tool if it sits alongside, and the folder if that leaves it empty.
+    /// </summary>
+    private static void ScheduleSelfDelete()
+    {
+        var exe = Environment.ProcessPath;
+        if (exe is null)
+        {
+            return;
+        }
+
+        var folder = Path.GetDirectoryName(exe)!;
+        var cli = Path.Combine(folder, "claude-roster.exe");
+        var command = $"/d /c ping -n 4 127.0.0.1 >nul & del /f /q \"{exe}\" & del /f /q \"{cli}\" & rmdir \"{folder}\"";
+        Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"), command)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = Path.GetTempPath(),
+        })?.Dispose();
     }
 
     private void Rename(AccountProfile profile)

@@ -141,6 +141,29 @@ public sealed class AccountSwitcher
         FileOps.DeleteDirectory(_paths.ProfileDirectory(profile.Id));
     }
 
+    /// <summary>
+    /// For uninstalling: deletes everything the roster saved (every account's sign-in, the backups, its settings).
+    /// Claude's own data is left alone, so Claude stays signed in to its current account.
+    /// </summary>
+    public void DeleteAllData()
+    {
+        var root = Path.GetFullPath(_paths.Root);
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        // CLAUDE_ROSTER_HOME can point anywhere; only delete a folder that is plainly the roster's own.
+        var looksLikeRoster = File.Exists(_paths.StateFile)
+                              || string.Equals(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), "ClaudeRoster", StringComparison.OrdinalIgnoreCase);
+        if (Path.GetPathRoot(root) == root || !looksLikeRoster || IsSameOrInside(_install.DataRoot, root))
+        {
+            throw new ClaudeRosterException($"{root} doesn't look like Claude Roster's own data folder, so it was left alone.");
+        }
+
+        FileOps.DeleteDirectory(root);
+    }
+
     public async Task<SwitchOutcome> SwitchAsync(string profileId, CancellationToken cancellationToken = default)
     {
         var state = _store.Load();
@@ -341,6 +364,12 @@ public sealed class AccountSwitcher
                 // A leftover backup is harmless; the next switch tries again.
             }
         }
+    }
+
+    private static bool IsSameOrInside(string path, string folder)
+    {
+        var relative = Path.GetRelativePath(folder, Path.GetFullPath(path));
+        return relative == "." || (!relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative));
     }
 
     private static AccountProfile Require(RosterState state, string profileId) =>

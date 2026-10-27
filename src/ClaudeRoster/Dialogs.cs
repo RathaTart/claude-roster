@@ -113,6 +113,13 @@ internal static class StartupRegistration
         }
     }
 
+    /// <summary>For uninstalling: drops the startup entry and every setting Claude Roster keeps in the registry.</summary>
+    public static void Forget()
+    {
+        SetEnabled(false);
+        Registry.CurrentUser.DeleteSubKeyTree(SettingsKey, throwOnMissingSubKey: false);
+    }
+
     /// <summary>
     /// Turns Start with Windows on the first time Claude Roster runs; after that the user's choice stands.
     /// An enabled entry is re-pointed at this copy of the exe, in case it has moved.

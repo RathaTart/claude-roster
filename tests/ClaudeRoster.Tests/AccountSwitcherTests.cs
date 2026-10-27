@@ -35,6 +35,29 @@ public sealed class AccountSwitcherTests : IDisposable
     }
 
     [Fact]
+    public async Task Uninstalling_deletes_the_roster_data_and_leaves_Claude_signed_in()
+    {
+        var switcher = CreateSwitcher();
+        await EnrolTwoAccountsAsync(switcher);
+
+        switcher.DeleteAllData();
+
+        Assert.False(Directory.Exists(Paths.Root));
+        Assert.Equal(AccountB, ConfigString(DataRoot, "lastKnownAccountUuid"));
+        Assert.Equal("cookies-B", Read(DataRoot, Cookies));
+    }
+
+    [Fact]
+    public void Uninstalling_refuses_a_folder_that_isnt_the_rosters()
+    {
+        Write(_temp.Combine("Documents"), "notes.txt", "keep me");
+        var switcher = new AccountSwitcher(new ClaudeInstall(DataRoot, null, null), new RosterPaths(_temp.Combine("Documents")), process: _process);
+
+        Assert.Throws<ClaudeRosterException>(switcher.DeleteAllData);
+        Assert.Equal("keep me", Read(_temp.Combine("Documents"), "notes.txt"));
+    }
+
+    [Fact]
     public async Task Switch_refuses_to_leave_an_unsaved_account_and_leaves_Claude_alone()
     {
         var switcher = CreateSwitcher();
