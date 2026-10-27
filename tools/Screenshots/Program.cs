@@ -89,6 +89,12 @@ internal static class Program
 
         // Everyday use: Work is signed in, Personal is one click away.
         await switcher.SwitchAsync(work.Id);
+        var personal = switcher.ListProfiles().First(profile => profile.Alias == "Personal");
+        // Readings are matched to whichever account was signed in when Claude took them (to the millisecond).
+        sandbox.WriteUsage(
+            (personal.LastUsedAt!.Value.AddMilliseconds(1), "org-personal", 64, 22),
+            (DateTimeOffset.UtcNow.AddMilliseconds(1), "org-work", 18, 41));
+        await CapturePanelAsync(tray, Path.Combine(output, "panel.png"));
         await CaptureMenuAsync(tray.Menu, Path.Combine(output, "menu.png"));
         await CaptureMessageBoxAsync(
             () => Dialogs.Confirm(TrayContext.SwitchConfirmation("Personal", switcher.GetStatus())),
@@ -132,6 +138,18 @@ internal static class Program
 
         menu.Close();
         menu.AutoClose = true;
+        await Task.Delay(300);
+    }
+
+    /// <summary>The account panel the title bar button and a left click on the tray icon open.</summary>
+    private static async Task CapturePanelAsync(TrayContext tray, string path)
+    {
+        var area = Screen.PrimaryScreen!.WorkingArea;
+        var panel = new AccountPanel(tray.BuildPanel);
+        panel.ShowBelow(new Rectangle(area.Left + area.Width / 2 - 160, area.Top + area.Height / 6, 0, 0));
+        await Task.Delay(800);
+        Capture(panel.Bounds, path);
+        panel.Close();
         await Task.Delay(300);
     }
 
@@ -239,6 +257,23 @@ internal sealed class Sandbox : IDisposable
         config["oauth:tokenCache"] = $"sample-{marker}";
         config["bootSidebarPlaceholder"] = new JsonArray();
         ClaudeConfig.Save(DataRoot, config);
+    }
+
+    /// <summary>Plan usage readings in Claude's format: percent of the 5-hour and weekly limits used.</summary>
+    public void WriteUsage(params (DateTimeOffset At, string Org, int SessionUsed, int WeeklyUsed)[] readings)
+    {
+        var samples = new JsonArray();
+        foreach (var reading in readings)
+        {
+            samples.Add(new JsonObject
+            {
+                ["t"] = reading.At.ToUnixTimeMilliseconds(),
+                ["org"] = reading.Org,
+                ["u"] = new JsonObject { ["fh"] = reading.SessionUsed, ["sd"] = reading.WeeklyUsed },
+            });
+        }
+
+        Write(PlanUsage.FileName, new JsonObject { ["version"] = 2, ["samples"] = samples }.ToJsonString());
     }
 
     public void Dispose()

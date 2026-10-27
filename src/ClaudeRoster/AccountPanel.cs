@@ -501,7 +501,7 @@ internal sealed class AccountPanel : Form
         var initials = words.Length switch
         {
             0 => "?",
-            1 => words[0][..Math.Min(2, words[0].Length)],
+            1 => words[0][..1],
             _ => $"{words[0][0]}{words[^1][0]}",
         };
         return initials.ToUpperInvariant();
