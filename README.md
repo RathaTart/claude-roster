@@ -12,7 +12,7 @@
 <p align="center">
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white">
   <img alt=".NET 9" src="https://img.shields.io/badge/.NET-9-512BD4?logo=dotnet&logoColor=white">
-  <img alt="Local only" src="https://img.shields.io/badge/network-none-2F5D7C">
+  <img alt="Local only" src="https://img.shields.io/badge/network-opt--in%20update%20check%20only-2F5D7C">
   <a href="https://github.com/RathaTart/claude-roster/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RathaTart/claude-roster"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -30,14 +30,17 @@
 
 - **Switch from inside Claude.** An account button sits at the top left of Claude's window, next to its back and forward arrows, and follows the window when you move it. It shows who's signed in and how much of the session limit is left. Click it to open the account panel.
 - **One-click switching.** Claude closes, swaps to the other account's sign-in, and reopens. It takes a few seconds.
-- **See usage left for every account.** The panel shows the session (5-hour) and weekly limits left for each saved account, with when each reading was taken. Add the small [Claude Code add-on](#live-usage-from-claude-code) and the signed-in account's figures stay live as you work.
+- **See usage left for every account.** The panel shows the session (5-hour) and weekly limits left for each saved account, when each resets, and a 7-day history. Add the small [Claude Code add-on](#live-usage-from-claude-code) and the signed-in account's figures stay live as you work.
+- **Warned before you run out.** When the signed-in account drops to 20% and then 10% of a limit, a notification names the account with the most left; click it to switch.
+- **Keyboard shortcut.** Open the panel from anywhere (Ctrl+Alt+R, or another if that's taken) and drive it with the arrow keys.
+- **Colours and short names.** Give each account a colour, shown as a dot on Claude's title bar, and a short name for the button.
 - **Saved sign-ins stay fresh.** Claude refreshes its tokens while you work, so every switch first copies the account you're leaving.
 - **Hard to lose an account.** It backs up before every switch and rolls back automatically if anything fails. It refuses to switch away from an account you haven't saved, or from a sign-in it can't read.
 - **Your setup comes with you.** Skills, plugins you installed, hooks, settings and memory live in `~\.claude`, so every account uses the same ones.
 - **Optionally share Claude Code sessions.** By default each account sees its own sessions in the Code tab. Turn on sharing and every account lists them all.
-- **Local only.** No network calls and no telemetry, add-on included. Saved sign-ins stay on your PC, readable only by your Windows user.
+- **Local only.** No telemetry, and no network calls unless you turn on the daily update check. Saved sign-ins stay on your PC, readable only by your Windows user.
 - **Scriptable.** A `claude-roster` command line covers everything the tray menu does.
-- **Clean uninstall.** One menu item removes Claude Roster, its saved accounts and its startup entry, and leaves Claude signed in.
+- **Clean uninstall.** One menu item removes Claude Roster, its saved accounts, its startup entry and its Claude Code add-on, and leaves Claude signed in.
 
 ## Requirements
 
@@ -73,6 +76,7 @@ The icon appears in the system tray next to the clock. On Windows 11 it may be h
 There are three ways in, all with the same choices:
 
 - **The account button** at the top left of Claude's window opens the account panel.
+- **The keyboard shortcut**, Ctrl+Alt+R by default, opens it from anywhere; press it again to close it. See [Keyboard](#keyboard).
 - **Left-click the tray icon** for the same panel.
 - **Right-click the tray icon** for a classic menu, shown in the pictures below.
 
@@ -108,7 +112,9 @@ Click an account and confirm. Claude closes and reopens signed in as that accoun
 
 ### See how much usage is left
 
-Each account in the panel shows two bars: what's left of the **session** (5-hour) limit and of the **weekly** limit. They turn amber below 25% and red below 10%. The account button in Claude shows the session figure, and hovering it shows both.
+Each account in the panel shows two bars: what's left of the **session** (5-hour) limit and of the **weekly** limit. They turn amber below 25% and red below 10%. Where the reading says when a limit resets, the bar ends with a countdown (*↻2h45m*). The account button in Claude shows the session figure, and hovering it shows both.
+
+Under the bars, **7 days** draws the highest session use of each of the last seven days, amber from 75% and red from 90%, so heavy days stand out. Claude keeps few readings, so Claude Roster logs them every 30 seconds in `usage-history.json` (times and percentages only, kept eight days). Claude's older readings name their organization; where only one saved account uses it, they count as that account's, so the history fills in from the start.
 
 - The numbers come from two places on your PC. Claude Roster reads them and makes no network calls.
   - `plan-usage-history.json`, where the desktop app records a reading **only now and then**, for example when it starts. It doesn't record one when you open its own usage page.
@@ -134,6 +140,16 @@ Or, in a Claude Code session: `/plugin install roster-usage --marketplace RathaT
 
 It starts in new Code sessions (or run `/reload-plugins` in an open one). The figures update after each Claude Code reply, so chatting outside the Code tab doesn't refresh them. To remove it: `claude plugin uninstall roster-usage`.
 
+### Get warned before you run out
+
+When the signed-in account drops to **20%** and again to **10%** of its session or weekly limit, Claude Roster shows a notification such as *Work has 9% of its session limit left (resets in 1h20m). Personal has 64% left: click to switch.* Clicking it switches, after the usual confirmation. Each warning shows once per limit window, and only for a reading under 30 minutes old. Turn it off with **Warn when usage runs low**.
+
+### Keyboard
+
+The shortcut opens the panel under Claude's account button when Claude is in view, otherwise at the mouse pointer. Pressed again, it closes the panel. In the panel, **↑ ↓** and **Tab** move, **Enter** chooses, **→** opens an account's ⋯ menu or a submenu, and **←** or **Esc** goes back.
+
+Another app may already use a combination. **Shortcut** in the panel chooses between Ctrl+Alt+R, Ctrl+Shift+Alt+R, Ctrl+Alt+K and Ctrl+Alt+Q, or **Automatic**, the default, which takes the first one that's free, or **Off**.
+
 ### Share Claude Code sessions between accounts (optional)
 
 Claude keeps a separate Code-tab session list for each account. Turn on **Share Code sessions** in the panel or menu, and each switch makes every account's list the same:
@@ -148,9 +164,16 @@ Only the session list is shared. The conversations themselves already live in `~
 > [!CAUTION]
 > Continuing a shared session sends that conversation through the account you're signed in to. If one account belongs to your employer, check its policy before letting work sessions into a personal account. Turning sharing off stops new copies; sessions already copied stay in both accounts.
 
-### Rename or remove
+### Rename, colour or remove
 
-In the panel, hover an account and click **⋯**. In the classic menu, use **Manage accounts**. Removing an account only deletes its saved sign-in on this PC; the Claude account itself isn't affected. You can't remove the account that's signed in right now.
+In the panel, hover an account and click **⋯**:
+
+- **Rename…** changes its name.
+- **Short name…** sets what the button on Claude's title bar calls it (up to 14 characters), for a name too long to fit.
+- **Colour** picks its colour, or **Automatic** to take one from its name. The colour fills its avatar and is the dot on Claude's title bar, so you can tell at a glance which account Claude is on.
+- **Remove…** forgets it. That only deletes its saved sign-in on this PC; the Claude account itself isn't affected. You can't remove the account that's signed in right now.
+
+In the classic menu, **Manage accounts** has Rename and Remove.
 
 <p><img src="docs/images/manage.png" alt="Manage accounts submenu with Rename and Remove"></p>
 
@@ -215,11 +238,12 @@ Everything is stored under `%APPDATA%\ClaudeRoster`. The folder is restricted to
 | `profiles\<id>\session\` | each account's saved sign-in |
 | `backups\` | the live sign-in, plus the session lists when sharing is on, from before each of the last 5 switches |
 | `shared-sessions.json` | which sessions each account had at the last merge, so deletions carry over |
+| `usage-history.json` | each account's usage readings for the last eight days (times and percentages), for the 7-day history |
 
 > [!CAUTION]
 > **Treat saved sign-ins like passwords.** Don't sync this folder to cloud storage, share it, or attach it to a bug report. Anyone who can read it as your Windows user can use those sessions. The encryption is tied to your Windows account, so the files don't work on another PC or for another user.
 
-Claude Roster makes no network requests and sends nothing anywhere.
+Claude Roster makes no network requests and sends nothing anywhere, with one exception you choose: **Check GitHub for updates daily** in the panel, off by default. When it's on, a minute after starting and then once a day, Claude Roster asks GitHub's public API for this project's latest release (`api.github.com/repos/RathaTart/claude-roster/releases/latest`). It sends nothing about your PC or accounts and downloads nothing. If there's a newer version, a notification and a line in the panel open its release page, where you download it yourself.
 
 ### Uninstall
 
@@ -231,7 +255,7 @@ Choose **Uninstall Claude Roster…** in the panel or the classic menu, and conf
 
 Claude's own data isn't touched. Claude stays signed in to its current account, and your Claude Code sessions stay. To use your other accounts again, sign in to them in Claude.
 
-The Claude Code add-on is Claude Code's to remove: `claude plugin uninstall roster-usage`.
+If the Claude Code add-on is installed, Uninstall removes it too, through Claude Code's own commands (`claude plugin uninstall roster-usage`, then `claude plugin marketplace remove claude-roster`), and deletes the figures it saved. If that part fails, the rest goes ahead and the message tells you the command to finish with.
 
 To uninstall by hand instead: turn off **Start with Windows**, choose **Exit**, then delete `ClaudeRoster.exe`, `%APPDATA%\ClaudeRoster` and the registry key `HKCU\Software\ClaudeRoster`.
 
@@ -267,7 +291,7 @@ Roster data     C:\Users\you\AppData\Roaming\ClaudeRoster
   Personal                 22222222…
                            Session 100% left · Week 78% left (reading from Mon 09:12, 2 days ago, may be behind Claude's usage page)
 * Work                     11111111…
-                           Session 82% left · Week 59% left (reading from 14:30, 2 min ago)
+                           Session 82% left ↻2h45m · Week 59% left ↻3d4h (reading from 14:30, 2 min ago)
 ```
 
 ## Build from source

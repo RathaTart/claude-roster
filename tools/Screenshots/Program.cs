@@ -91,9 +91,17 @@ internal static class Program
         await switcher.SwitchAsync(work.Id);
         var personal = switcher.ListProfiles().First(profile => profile.Alias == "Personal");
         // Readings are matched to whichever account was signed in when Claude took them (to the millisecond).
+        // Work's older readings (its organization's) draw the 7-day row; the add-on's latest brings reset times.
+        var now = DateTimeOffset.UtcNow;
         sandbox.WriteUsage(
+            (now.AddDays(-6), "org-work", 35, 12),
+            (now.AddDays(-5), "org-work", 62, 20),
+            (now.AddDays(-4), "org-work", 81, 31),
+            (now.AddDays(-3), "org-work", 48, 38),
+            (now.AddDays(-1), "org-work", 94, 52),
             (personal.LastUsedAt!.Value.AddMilliseconds(1), "org-personal", 64, 22),
-            (DateTimeOffset.UtcNow.AddMilliseconds(1), "org-work", 18, 41));
+            (now.AddMilliseconds(1), "org-work", 18, 41));
+        sandbox.WriteAddOnReading(now.AddMilliseconds(2), 23, 41, now.AddHours(2).AddMinutes(45), now.AddDays(3).AddHours(4));
         await CapturePanelAsync(tray, Path.Combine(output, "panel.png"));
         await CaptureMenuAsync(tray.Menu, Path.Combine(output, "menu.png"));
         await CaptureMessageBoxAsync(
@@ -245,8 +253,25 @@ internal sealed class Sandbox : IDisposable
 
     private string DataRoot => Path.Combine(_root, "Claude");
 
+    private string AddOnStore => Path.Combine(_root, "ClaudeCodeStore");
+
     public AccountSwitcher CreateSwitcher() =>
-        new(new ClaudeInstall(DataRoot, null, null), new RosterPaths(Path.Combine(_root, "Roster")), process: new DemoClaudeProcess());
+        new(new ClaudeInstall(DataRoot, null, null), new RosterPaths(Path.Combine(_root, "Roster")), process: new DemoClaudeProcess(),
+            addOnStore: AddOnStore);
+
+    /// <summary>A reading as the roster-usage add-on saves it, with reset times.</summary>
+    public void WriteAddOnReading(DateTimeOffset at, int sessionUsed, int weeklyUsed, DateTimeOffset sessionResets, DateTimeOffset weeklyResets)
+    {
+        Directory.CreateDirectory(AddOnStore);
+        var latest = new JsonObject
+        {
+            ["at"] = at.ToUnixTimeMilliseconds(),
+            ["limits"] = new JsonArray(
+                new JsonObject { ["kind"] = "five_hour", ["percentUsed"] = sessionUsed, ["resetsAt"] = sessionResets.ToString("O") },
+                new JsonObject { ["kind"] = "seven_day", ["percentUsed"] = weeklyUsed, ["resetsAt"] = weeklyResets.ToString("O") }),
+        };
+        File.WriteAllText(Path.Combine(AddOnStore, "roster-usage_claude-roster-000000000000.json"), new JsonObject { ["latest"] = latest }.ToJsonString());
+    }
 
     public void SignIn(string accountUuid, string marker)
     {
