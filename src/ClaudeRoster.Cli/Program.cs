@@ -124,11 +124,17 @@ void PrintStatus()
 void PrintList()
 {
     var active = switcher.GetStatus().Profile?.Id;
+    var usage = switcher.GetUsage();
+    var now = DateTimeOffset.UtcNow;
     foreach (var profile in switcher.ListProfiles())
     {
         var marker = profile.Id == active ? "*" : " ";
         var saved = profile.Id == active || switcher.HasSavedSignIn(profile) ? "" : "  (sign-in not saved yet)";
         Console.WriteLine($"{marker} {profile.Alias,-24} {Mask(profile.AccountUuid)}{saved}");
+        if (usage.TryGetValue(profile.Id, out var sample))
+        {
+            Console.WriteLine($"  {"",-24} {sample.Summary(now)} ({sample.Age(now)})");
+        }
     }
 }
 

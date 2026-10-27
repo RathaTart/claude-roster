@@ -5,9 +5,13 @@ using Microsoft.Win32;
 
 namespace ClaudeRoster;
 
+/// <param name="Detail">Shown dimmer after the name, e.g. the session usage left.</param>
+/// <param name="Tip">The tooltip, e.g. the full usage summary.</param>
+internal sealed record TitleBarLabel(string Text, string? Detail, string Tip);
+
 /// <summary>
 /// The account button pinned to the top left of Claude's window, beside its back and forward arrows. It follows the
-/// window as it moves, sits just above it in the z-order (not over other apps), and opens the tray icon's menu.
+/// window as it moves, sits just above it in the z-order (not over other apps), and opens the account panel.
 /// </summary>
 internal sealed class TitleBarButton : Form
 {
@@ -15,7 +19,7 @@ internal sealed class TitleBarButton : Form
     private const int Left96 = 142;
     private const int Top96 = 4;
     private const int Height96 = 28;
-    private const int MaxWidth96 = 180;
+    private const int MaxWidth96 = 190;
     private const int Padding96 = 9;
     private const int Gap96 = 6;
     private const int Icon96 = 14;
@@ -25,8 +29,8 @@ internal sealed class TitleBarButton : Form
     private const string ChevronGlyph = "";
 
     private readonly ClaudeProcess _claude;
-    private readonly ContextMenuStrip _menu;
-    private readonly Func<string> _label;
+    private readonly Action<Rectangle> _onClick;
+    private readonly Func<TitleBarLabel> _label;
     private readonly System.Windows.Forms.Timer _watch = new() { Interval = 1000 };
     private readonly ToolTip _tip = new();
     private readonly WinEventProc _onWinEvent;
@@ -41,13 +45,14 @@ internal sealed class TitleBarButton : Form
     private Font? _textFont;
     private Font? _iconFont;
     private Font? _chevronFont;
-    private string _text = "";
+    private TitleBarLabel _text = new("", null, "");
 
+    /// <param name="onClick">Opens the account panel under the button (given in screen coordinates).</param>
     /// <param name="label">What the button says: the signed-in account. Polled, so it must be cheap.</param>
-    public TitleBarButton(ClaudeProcess claude, ContextMenuStrip menu, Func<string> label)
+    public TitleBarButton(ClaudeProcess claude, Action<Rectangle> onClick, Func<TitleBarLabel> label)
     {
         _claude = claude;
-        _menu = menu;
+        _onClick = onClick;
         _label = label;
         _onWinEvent = OnWinEvent;
         FormBorderStyle = FormBorderStyle.None;
@@ -56,7 +61,6 @@ internal sealed class TitleBarButton : Form
         AutoScaleMode = AutoScaleMode.None;
         DoubleBuffered = true;
         Text = "Claude Roster";
-        _tip.SetToolTip(this, "Switch Claude account (Claude Roster)");
         _watch.Tick += (_, _) => Poll();
     }
 
@@ -151,7 +155,7 @@ internal sealed class TitleBarButton : Form
         base.OnMouseUp(e);
         if (e.Button is MouseButtons.Left or MouseButtons.Right)
         {
-            _menu.Show(this, new Point(0, Height + Px(2)));
+            _onClick(Bounds);
         }
     }
 
@@ -177,8 +181,17 @@ internal sealed class TitleBarButton : Form
         var text = Rectangle.FromLTRB(icon.Right + Px(Gap96), 0, chevron.Left - Px(Gap96), Height);
         TextRenderer.DrawText(graphics, ContactGlyph, _iconFont, icon, palette.Text, centered);
         TextRenderer.DrawText(graphics, ChevronGlyph, _chevronFont, chevron, palette.Dim, centered);
-        TextRenderer.DrawText(graphics, _text, _textFont, text, palette.Text,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+        const TextFormatFlags line = TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+        if (_text.Detail is { } detail)
+        {
+            // The detail (usage left) always shows; the name gives way to it when space runs out.
+            var detailWidth = Math.Min(TextRenderer.MeasureText(detail, _textFont, Size.Empty, line).Width, text.Width / 2);
+            var detailBounds = Rectangle.FromLTRB(text.Right - detailWidth, 0, text.Right, Height);
+            TextRenderer.DrawText(graphics, detail, _textFont, detailBounds, palette.Dim, line | TextFormatFlags.Right);
+            text = Rectangle.FromLTRB(text.Left, 0, detailBounds.Left - Px(Gap96), Height);
+        }
+
+        TextRenderer.DrawText(graphics, _text.Text, _textFont, text, palette.Text, line | TextFormatFlags.EndEllipsis);
     }
 
     /// <summary>Picks up Claude's window if it came or went, the account shown, and the colours, then repositions.</summary>
@@ -189,7 +202,7 @@ internal sealed class TitleBarButton : Form
             return;
         }
 
-        if ((_target == 0 || !IsWindow(_target) || !IsWindowVisible(_target)))
+        if (_target == 0 || !IsWindow(_target) || !IsWindowVisible(_target))
         {
             Track(FindClaudeWindow());
         }
@@ -200,11 +213,16 @@ internal sealed class TitleBarButton : Form
         {
             _text = text;
             _light = light;
+            _tip.SetToolTip(this, text.Tip);
             ApplyBorderColor();
             Invalidate();
         }
 
         Follow();
+        if (Visible && !IsJustAboveClaude())
+        {
+            Raise();
+        }
     }
 
     /// <summary>Moves the button onto Claude's title bar, or hides it while the window is closed, minimised or on another desktop.</summary>
@@ -261,6 +279,28 @@ internal sealed class TitleBarButton : Form
 
         var topmost = above != 0 && (GetWindowLongPtrW(above, GwlExStyle) & WsExTopmost) != 0;
         SetWindowPos(Handle, above == 0 || topmost ? HwndTop : above, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
+
+    /// <summary>
+    /// False when something other than Claude sits right under the button, e.g. Claude was brought forward without
+    /// becoming the active window and now covers it.
+    /// </summary>
+    private bool IsJustAboveClaude()
+    {
+        for (var below = GetWindow(Handle, GwHwndNext); below != 0; below = GetWindow(below, GwHwndNext))
+        {
+            if (below == _target)
+            {
+                return true;
+            }
+
+            if (IsWindowVisible(below) && !IsCloaked(below))
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     private void OnWinEvent(nint hook, uint type, nint window, int objectId, int childId, uint thread, uint time)
@@ -368,7 +408,11 @@ internal sealed class TitleBarButton : Form
 
     private int MeasureWidth()
     {
-        var text = _textFont is null ? 0 : TextRenderer.MeasureText(_text, _textFont, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+        int Measure(string? value) => value is null || _textFont is null
+            ? 0
+            : TextRenderer.MeasureText(value, _textFont, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+
+        var text = Measure(_text.Text) + (_text.Detail is null ? 0 : Px(Gap96) + Measure(_text.Detail));
         var width = Px(Padding96) * 2 + Px(Icon96) + Px(Chevron96) + Px(Gap96) * 2 + text;
         return Math.Min(width, Px(MaxWidth96));
     }
@@ -449,6 +493,7 @@ internal sealed class TitleBarButton : Form
     private const long WsExTopmost = 0x8;
     private const long WsExToolWindow = 0x80;
     private const int WsExToolWindowInt = 0x80;
+    private const uint GwHwndNext = 2;
     private const uint GwHwndPrev = 3;
     private const uint GwOwner = 4;
     private const uint SwpNoSize = 0x1;

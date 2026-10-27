@@ -25,6 +25,9 @@ public sealed class ClaudeProcess(ClaudeInstall install) : IClaudeProcess
     private static readonly TimeSpan GracefulCloseTimeout = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan ForcedCloseTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan WindowTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan RelaunchDelay = TimeSpan.FromSeconds(2);
+    private const int LaunchAttempts = 2;
 
     /// <summary>
     /// True only for the desktop app itself. The Claude Code CLI is also named claude.exe (inside the app's data
@@ -133,7 +136,57 @@ public sealed class ClaudeProcess(ClaudeInstall install) : IClaudeProcess
         }
     }
 
+    /// <summary>
+    /// Starts Claude and waits for its window. Claude can quit straight after starting (the instance it replaces
+    /// still letting go of its data folder), so a start that dies before showing a window is tried once more.
+    /// </summary>
     public async Task OpenAsync(ClaudeRunState previous, CancellationToken cancellationToken = default)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            Launch(previous);
+            var started = await WaitForStartAsync(cancellationToken);
+            if (started)
+            {
+                return;
+            }
+
+            if (attempt >= LaunchAttempts)
+            {
+                throw new ClaudeRosterException("Claude didn't start. Open it from the Start menu.");
+            }
+
+            await Task.Delay(RelaunchDelay, cancellationToken);
+        }
+    }
+
+    /// <summary>True when Claude shows a window, or keeps running without one (it may have started in the tray).</summary>
+    private static async Task<bool> WaitForStartAsync(CancellationToken cancellationToken)
+    {
+        var clock = Stopwatch.StartNew();
+        TimeSpan? firstSeen = null;
+        while (true)
+        {
+            var running = FindDesktop(NativeProcesses.Snapshot()).Select(process => process.Id).ToHashSet();
+            if (running.Count > 0)
+            {
+                firstSeen ??= clock.Elapsed;
+                if (NativeProcesses.HasVisibleWindow(running) || clock.Elapsed - firstSeen >= WindowTimeout)
+                {
+                    return true;
+                }
+            }
+            else if (firstSeen is not null || clock.Elapsed >= StartupTimeout)
+            {
+                // It started and quit before showing a window, or never started at all.
+                return false;
+            }
+
+            await Task.Delay(250, cancellationToken);
+        }
+    }
+
+    private void Launch(ClaudeRunState previous)
     {
         var appId = previous.AppUserModelId ?? install.DefaultAppUserModelId;
         var executable = previous.ExecutablePath ?? install.LauncherPath;
@@ -152,17 +205,6 @@ public sealed class ClaudeProcess(ClaudeInstall install) : IClaudeProcess
         else
         {
             throw new ClaudeRosterException("Couldn't work out how to start Claude. Open it from the Start menu.");
-        }
-
-        var clock = Stopwatch.StartNew();
-        while (FindDesktop(NativeProcesses.Snapshot()).Count == 0)
-        {
-            if (clock.Elapsed >= StartupTimeout)
-            {
-                throw new ClaudeRosterException("Claude didn't start. Open it from the Start menu.");
-            }
-
-            await Task.Delay(250, cancellationToken);
         }
     }
 

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using ClaudeRoster.Core;
 
 namespace ClaudeRoster;
@@ -24,6 +23,8 @@ internal sealed class TrayContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _claudeWatch = new() { Interval = 2000 };
     private readonly RegisteredWaitHandle? _showRequestWait;
     private readonly TitleBarButton? _titleBar;
+    private AccountPanel? _panel;
+    private DateTime _panelClosedAt;
     private bool _hideWhileClaudeClosed;
     private DateTime _signInWatchEnds;
     private bool _busy;
@@ -51,7 +52,7 @@ internal sealed class TrayContext : ApplicationContext
         {
             if (e.Button == MouseButtons.Left)
             {
-                ShowMenu();
+                ShowPanel(panel => panel.ShowAbove(Cursor.Position));
             }
         };
         _signInWatch.Tick += (_, _) => CheckForNewSignIn();
@@ -73,7 +74,7 @@ internal sealed class TrayContext : ApplicationContext
 
         if (titleBarButton)
         {
-            _titleBar = new TitleBarButton(_claude, _menu, TitleBarLabel);
+            _titleBar = new TitleBarButton(_claude, anchor => ShowPanel(panel => panel.ShowBelow(anchor)), TitleBarLabel);
             _titleBar.SetEnabled(SafeTitleBarSetting());
         }
     }
@@ -94,6 +95,7 @@ internal sealed class TrayContext : ApplicationContext
         if (disposing)
         {
             _showRequestWait?.Unregister(null);
+            _panel?.Close();
             _titleBar?.Dispose();
             _claudeWatch.Dispose();
             _signInWatch.Dispose();
@@ -442,8 +444,11 @@ internal sealed class TrayContext : ApplicationContext
         }
     }
 
-    /// <summary>What the title bar button says. Polled every second, so it skips the process scan.</summary>
-    private string TitleBarLabel()
+    /// <summary>
+    /// What the title bar button says: the account and its session usage left. Polled every second, so it skips the
+    /// process scan.
+    /// </summary>
+    private TitleBarLabel TitleBarLabel()
     {
         LiveStatus? status;
         try
@@ -455,13 +460,148 @@ internal sealed class TrayContext : ApplicationContext
             status = null;
         }
 
+        var now = DateTimeOffset.UtcNow;
+        var sample = status?.Profile is { } signedIn && SafeUsage().TryGetValue(signedIn.Id, out var found) ? found : null;
+        var left = sample?.SessionLeft(now);
         return status switch
         {
-            null or { IsUnidentified: true } => AppName,
-            { Profile: { } profile } => profile.Alias,
-            { AccountUuid: not null } => "Account not saved",
-            _ => "Signed out",
+            null or { IsUnidentified: true } => new(AppName, null, "Switch Claude account (Claude Roster)"),
+            { Profile: { } profile } => new(profile.Alias, left is null ? null : $"{left}%",
+                sample is { HasLimits: true } ? $"{profile.Alias}: {sample.Summary(now)}" : $"Signed in as {profile.Alias}"),
+            { AccountUuid: not null } => new("Account not saved", null, "Open to save the account signed in to Claude"),
+            _ => new("Signed out", null, "Claude is signed out"),
         };
+    }
+
+    private IReadOnlyDictionary<string, UsageSample> SafeUsage()
+    {
+        try
+        {
+            return _switcher.GetUsage();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            return new Dictionary<string, UsageSample>();
+        }
+    }
+
+    /// <summary>Opens the account panel; a click that just closed it (on the same button) leaves it closed.</summary>
+    private void ShowPanel(Action<AccountPanel> open)
+    {
+        if (_panel is not null || DateTime.UtcNow - _panelClosedAt < TimeSpan.FromMilliseconds(300))
+        {
+            return;
+        }
+
+        _panel = new AccountPanel(BuildPanel);
+        _panel.FormClosed += (_, _) =>
+        {
+            _panel = null;
+            _panelClosedAt = DateTime.UtcNow;
+        };
+        open(_panel);
+    }
+
+    /// <summary>The same choices as the tray menu, with each account's plan usage.</summary>
+    internal IReadOnlyList<PanelItem> BuildPanel()
+    {
+        var items = new List<PanelItem>();
+        var status = SafeStatus();
+        IReadOnlyList<AccountProfile> profiles;
+        try
+        {
+            profiles = _switcher.ListProfiles();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            items.Add(new PanelHeader($"Couldn't read saved accounts: {exception.Message}", IsNote: true));
+            AddPanelFooter(items);
+            return items;
+        }
+
+        items.Add(new PanelHeader(_busy ? "Switching…" : "Claude accounts"));
+        switch (status)
+        {
+            case null or { IsUnidentified: true }:
+                items.Add(new PanelHeader("Couldn't read Claude's sign-in", IsNote: true));
+                break;
+            case { IsUnsaved: true }:
+                items.Add(new PanelHeader("Signed in to an account that isn't saved yet", IsNote: true));
+                break;
+            case { AccountUuid: null }:
+                items.Add(new PanelHeader("Claude is signed out", IsNote: true));
+                break;
+        }
+
+        var usage = SafeUsage();
+        var now = DateTimeOffset.UtcNow;
+        foreach (var profile in profiles)
+        {
+            var active = status?.Profile?.Id == profile.Id;
+            var ready = active || _switcher.HasSavedSignIn(profile);
+            usage.TryGetValue(profile.Id, out var sample);
+            var more = new List<PanelItem>
+            {
+                new PanelAction(Glyphs.Rename, "Rename…", !_busy, () => Rename(profile)),
+                new PanelAction(Glyphs.Delete, active ? "Remove (switch away first)" : "Remove…", !_busy && !active, () => Remove(profile), Danger: true),
+            };
+            items.Add(new PanelAccount(
+                profile.Alias,
+                AccountDetail(active, ready, sample, now),
+                sample?.SessionLeft(now),
+                sample?.WeeklyLeft(now),
+                active,
+                Enabled: !_busy && ready && !active,
+                async () => await SwitchToAsync(profile),
+                more));
+        }
+
+        items.Add(new PanelSeparator());
+        if (status is { IsUnsaved: true })
+        {
+            items.Add(new PanelAction(Glyphs.Save, "Save current account…", !_busy, () => PromptSaveCurrent(SaveCurrentPrompt)));
+        }
+
+        items.Add(new PanelAction(Glyphs.Add, "Add another account…", !_busy, async () => await AddAccountAsync()));
+        AddPanelFooter(items);
+        return items;
+    }
+
+    private void AddPanelFooter(List<PanelItem> items)
+    {
+        items.Add(new PanelSeparator());
+        items.Add(new PanelToggle("Share Code sessions across accounts", SafeShareSetting(), !_busy, ToggleSharing));
+        if (_titleBar is not null)
+        {
+            items.Add(new PanelToggle("Show account button in Claude", SafeTitleBarSetting(), true, ToggleTitleBar));
+        }
+
+        items.Add(new PanelToggle("Start with Windows", StartupRegistration.IsEnabled(), true, StartupRegistration.SetEnabled));
+        items.Add(new PanelSeparator());
+        items.Add(new PanelAction(Glyphs.Folder, "Open Claude Roster folder", true, OpenDataFolder));
+        items.Add(new PanelAction(Glyphs.Exit, "Exit", true, ExitThread));
+    }
+
+    private static string AccountDetail(bool active, bool ready, UsageSample? sample, DateTimeOffset now) => (active, sample) switch
+    {
+        (true, { HasLimits: true }) => $"Signed in · usage {sample.Age(now)}",
+        (true, not null) => "Signed in · no usage limits reported",
+        (true, null) => "Signed in",
+        _ when !ready => "Sign-in not saved yet",
+        (false, { HasLimits: true }) => $"Usage as of {sample.Age(now)}",
+        (false, not null) => $"No usage limits reported · {sample.Age(now)}",
+        _ => "No usage recorded yet",
+    };
+
+    /// <summary>Segoe Fluent Icons / MDL2 code points.</summary>
+    private static class Glyphs
+    {
+        public const string Add = "\uE710";
+        public const string Save = "\uE74E";
+        public const string Rename = "\uE8AC";
+        public const string Delete = "\uE74D";
+        public const string Folder = "\uE8B7";
+        public const string Exit = "\uE7E8";
     }
 
     private void Rename(AccountProfile profile)
@@ -540,9 +680,6 @@ internal sealed class TrayContext : ApplicationContext
         Directory.CreateDirectory(_switcher.Paths.Root);
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_switcher.Paths.Root}\"") { UseShellExecute = false })?.Dispose();
     }
-
-    private void ShowMenu() =>
-        typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(_tray, null);
 
     private void Notify(string text) => _tray.ShowBalloonTip(5000, AppName, text, ToolTipIcon.Info);
 

@@ -57,6 +57,9 @@ public sealed class AccountSwitcher
     public IReadOnlyList<AccountProfile> ListProfiles() =>
         _store.Load().Profiles.OrderBy(profile => profile.Alias, StringComparer.CurrentCultureIgnoreCase).ToList();
 
+    /// <summary>The plan usage Claude last recorded for each saved account, keyed by profile id.</summary>
+    public IReadOnlyDictionary<string, UsageSample> GetUsage() => PlanUsage.ForProfiles(_install.DataRoot, ListProfiles());
+
     public bool HasSavedSignIn(AccountProfile profile) => _snapshots.ReadInfo(_paths.SessionDirectory(profile.Id)) is not null;
 
     public bool ShareCodeSessions => _store.Load().ShareCodeSessions;

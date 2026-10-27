@@ -101,6 +101,24 @@ internal static class NativeProcesses
         }, 0);
     }
 
+    /// <summary>True once any of the given processes shows a titled top-level window.</summary>
+    public static bool HasVisibleWindow(IReadOnlySet<int> processIds)
+    {
+        var found = false;
+        EnumWindows((window, _) =>
+        {
+            GetWindowThreadProcessId(window, out var owner);
+            if (processIds.Contains((int)owner) && IsWindowVisible(window) && GetWindowTextLengthW(window) > 0)
+            {
+                found = true;
+                return false;
+            }
+
+            return true;
+        }, 0);
+        return found;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct ProcessEntry32
     {
@@ -148,6 +166,9 @@ internal static class NativeProcesses
 
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(nint window);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowTextLengthW(nint window);
 
     [DllImport("user32.dll")]
     private static extern bool PostMessageW(nint window, uint message, nint wParam, nint lParam);
