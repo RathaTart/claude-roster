@@ -34,6 +34,7 @@ public sealed class AccountSwitcher
     private readonly IClaudeProcess _process;
     private readonly ISessionSnapshotter _snapshots;
     private readonly TimeProvider _time;
+    private readonly string? _addOnStore;
 
     public AccountSwitcher(
         ClaudeInstall install,
@@ -41,9 +42,12 @@ public sealed class AccountSwitcher
         IProfileStore? store = null,
         IClaudeProcess? process = null,
         ISessionSnapshotter? snapshots = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        string? addOnStore = null)
     {
         _install = install;
+        // A sandboxed Claude (tests, dry runs, the screenshot tool) leaves the real add-on's store out too.
+        _addOnStore = addOnStore ?? (install.PackageFamilyName is null && install.LauncherPath is null ? null : PlanUsage.DefaultAddOnStoreFolder());
         _paths = paths;
         _time = time ?? TimeProvider.System;
         _store = store ?? new JsonProfileStore(paths);
@@ -58,7 +62,7 @@ public sealed class AccountSwitcher
         _store.Load().Profiles.OrderBy(profile => profile.Alias, StringComparer.CurrentCultureIgnoreCase).ToList();
 
     /// <summary>The plan usage Claude last recorded for each saved account, keyed by profile id.</summary>
-    public IReadOnlyDictionary<string, UsageSample> GetUsage() => PlanUsage.ForProfiles(_install.DataRoot, ListProfiles());
+    public IReadOnlyDictionary<string, UsageSample> GetUsage() => PlanUsage.ForProfiles(_install.DataRoot, ListProfiles(), _addOnStore);
 
     public bool HasSavedSignIn(AccountProfile profile) => _snapshots.ReadInfo(_paths.SessionDirectory(profile.Id)) is not null;
 

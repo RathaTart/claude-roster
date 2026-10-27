@@ -1,0 +1,14 @@
+{
+  "name": "claude-roster",
+  "description": "Claude Roster's Claude Code add-on.",
+  "owner": {
+    "name": "RathaTart"
+  },
+  "plugins": [
+    {
+      "name": "roster-usage",
+      "source": "./mods/roster-usage",
+      "description": "Saves the plan usage Claude Code already has so Claude Roster can show it live."
+    }
+  ]
+}

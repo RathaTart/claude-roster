@@ -25,6 +25,39 @@ public sealed class PlanUsageTests
     }
 
     [Fact]
+    public void The_add_ons_fresher_reading_wins_and_carries_its_reset_times()
+    {
+        using var temp = new TempDirectory();
+        var work = Profile(FakeClaude.AccountA, Start);
+        WriteHistory(temp.Root, Sample(Start.AddMinutes(5), "org-work", """{"fh":7,"sd":53}"""));
+        var store = temp.Combine("store");
+        var resets = Start.AddHours(3);
+        FakeClaude.Write(store, "roster-usage_claude-roster-0123456789ab.json", $$$"""
+            {"latest":{"at":{{{Start.AddMinutes(40).ToUnixTimeMilliseconds()}}},"limits":[
+              {"kind":"five_hour","percentUsed":21.4,"resetsAt":"{{{resets:O}}}"},
+              {"kind":"seven_day","percentUsed":55}]}}
+            """);
+
+        var sample = PlanUsage.ForProfiles(temp.Root, [work], store)[work.Id];
+
+        Assert.Equal(new UsageSample(Start.AddMinutes(40), 21, 55, resets, null), sample);
+        Assert.Equal(79, sample.SessionLeft(resets.AddMinutes(-1)));
+        Assert.Equal(100, sample.SessionLeft(resets));
+    }
+
+    [Fact]
+    public void Without_the_add_on_the_history_is_used()
+    {
+        using var temp = new TempDirectory();
+        var work = Profile(FakeClaude.AccountA, Start);
+        WriteHistory(temp.Root, Sample(Start.AddMinutes(5), "org-work", """{"fh":7,"sd":53}"""));
+        FakeClaude.Write(temp.Combine("store"), "roster-usage_x-1.json", "not json");
+
+        Assert.Equal(7, PlanUsage.ForProfiles(temp.Root, [work], temp.Combine("store"))[work.Id].SessionUsed);
+        Assert.Equal(7, PlanUsage.ForProfiles(temp.Root, [work], temp.Combine("missing"))[work.Id].SessionUsed);
+    }
+
+    [Fact]
     public void An_account_with_no_readings_is_left_out()
     {
         using var temp = new TempDirectory();

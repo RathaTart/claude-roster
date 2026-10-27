@@ -107,12 +107,29 @@ Click an account and confirm. Claude closes and reopens signed in as that accoun
 
 Each account in the panel shows two bars: what's left of the **session** (5-hour) limit and of the **weekly** limit. They turn amber below 25% and red below 10%. The account button in Claude shows the session figure, and hovering it shows both.
 
-- The numbers come from `plan-usage-history.json`, where Claude records your plan usage. Claude Roster reads that file and makes no network calls.
-- **Claude only records a reading now and then**, for example when it starts. It doesn't record one when you open its own usage page, so these figures can lag behind it.
-- **Every figure says when Claude took it**, e.g. *reading from 15:54, 36 min ago*. Readings older than 5 minutes are greyed out, and the button adds their age (*93% · 36m*). For live numbers, open Claude's own usage page.
+- The numbers come from two places on your PC. Claude Roster reads them and makes no network calls.
+  - `plan-usage-history.json`, where the desktop app records a reading **only now and then**, for example when it starts. It doesn't record one when you open its own usage page.
+  - **The roster-usage add-on for Claude Code** (recommended). After every Claude Code reply in the desktop app, it saves the same figures Claude Code's status line has, with their exact reset times. It makes no requests of its own, saves nothing about your conversations, and records nothing from the terminal `claude`, which may be signed in to another account. See [Live usage from Claude Code](#live-usage-from-claude-code).
+- **Every figure says when it was taken**, e.g. *reading from 15:54, 36 min ago*. Readings older than 5 minutes are greyed out, and the button adds their age (*93% · 36m*). For live numbers without the add-on, open Claude's own usage page.
 - Claude records readings per organization, not per account, so each account gets the readings taken while it was the one signed in.
 - An account you're not signed in to shows its last reading. Once 5 hours (session) or 7 days (weekly) have passed since then, that limit has reset, so it shows as fully available.
 - Some plans have no limits for Claude to report. Those accounts show **No usage limits reported**.
+
+### Live usage from Claude Code
+
+The `roster-usage` add-on keeps the usage figures current while you use the Code tab. Install it once from a terminal:
+
+```powershell
+claude plugin marketplace add RathaTart/claude-roster
+```
+
+```powershell
+claude plugin install roster-usage@claude-roster
+```
+
+Or, in a Claude Code session: `/plugin install roster-usage --marketplace RathaTart/claude-roster`. Built from source? Point the first command at your clone's folder instead.
+
+It starts in new Code sessions (or run `/reload-plugins` in an open one). The figures update after each Claude Code reply, so chatting outside the Code tab doesn't refresh them. To remove it: `claude plugin uninstall roster-usage`.
 
 ### Share Claude Code sessions between accounts (optional)
 
@@ -211,6 +228,8 @@ Choose **Uninstall Claude Roster…** in the panel or the classic menu, and conf
 
 Claude's own data isn't touched. Claude stays signed in to its current account, and your Claude Code sessions stay. To use your other accounts again, sign in to them in Claude.
 
+The Claude Code add-on is Claude Code's to remove: `claude plugin uninstall roster-usage`.
+
 To uninstall by hand instead: turn off **Start with Windows**, choose **Exit**, then delete `ClaudeRoster.exe`, `%APPDATA%\ClaudeRoster` and the registry key `HKCU\Software\ClaudeRoster`.
 
 ## Command line
@@ -277,6 +296,7 @@ Both programs end up in `claude-roster\publish`.
 | `src/ClaudeRoster.Cli` | `claude-roster.exe` |
 | `tests/ClaudeRoster.Tests` | xUnit tests against fake Claude data folders; they never touch the real one |
 | `tools/Screenshots` | regenerates the images in `docs/images` with sample accounts |
+| `mods/roster-usage` | the Claude Code add-on that saves live usage; `claude plugin test mods/roster-usage` runs its tests |
 
 The tests and the screenshot tool run on throwaway data. For manual testing, `CLAUDE_ROSTER_CLAUDE_DATA` points Claude Roster at a different Claude data folder, and `CLAUDE_ROSTER_HOME` sets where it keeps its own data.
 
@@ -285,7 +305,8 @@ The tests and the screenshot tool run on throwaway data. For manual testing, `CL
 - Claude's sign-in storage isn't a documented interface, so a Claude update can change it. When that happens, expect Claude Roster to refuse to switch rather than corrupt anything; the storage list in `SessionSnapshotter` and `ClaudeConfig` then needs updating.
 - One account is active at a time. It doesn't run two Claude windows side by side.
 - The account button is placed for Claude's current title bar layout, beside the back and forward arrows. If a Claude update moves those, the button may need repositioning (the offsets are at the top of `TitleBarButton.cs`).
-- Usage is only as fresh as Claude's last reading, which can be well behind Claude's own usage page; old readings are greyed out. The file format isn't documented either; if it changes, accounts simply show no usage.
+- Usage is only as fresh as the last reading: the add-on's last Claude Code reply, or the desktop app's occasional one. Old readings are greyed out. Claude's usage file format isn't documented either; if it changes, accounts simply show no usage.
+- Readings don't say which account they belong to, so each is credited to the account that was signed in when it was taken.
 - The panel and button follow the Windows app theme. Claude's own appearance setting can't be read from outside.
 - The Microsoft Store install is tested. The classic installer (`%LOCALAPPDATA%\AnthropicClaude`) is supported by path rules but hasn't been tested.
 

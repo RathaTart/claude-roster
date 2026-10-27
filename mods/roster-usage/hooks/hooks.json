@@ -1,0 +1,6 @@
+{
+  "description": "roster-usage (Mod): saves the plan's rate limits for Claude Roster.",
+  "modules": [
+    "./register.ts"
+  ]
+}

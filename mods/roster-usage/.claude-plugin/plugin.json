@@ -1,0 +1,9 @@
+{
+  "name": "roster-usage",
+  "version": "0.1.0",
+  "description": "Saves the plan usage Claude Code already has (session and weekly limits) so Claude Roster can show it. Desktop app only; no requests of its own.",
+  "author": {
+    "name": "RathaTart"
+  },
+  "license": "MIT"
+}
