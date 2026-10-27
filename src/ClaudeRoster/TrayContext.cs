@@ -63,7 +63,11 @@ internal sealed class TrayContext : ApplicationContext
         _claudeWatch.Tick += (_, _) => UpdateVisibility();
         _shortcut.Pressed += OnShortcut;
         _shortcut.Apply(SafeShortcutChoice());
-        _usageWatch.Tick += (_, _) => CheckUsage();
+        _usageWatch.Tick += (_, _) =>
+        {
+            RecordUsage();
+            CheckUsage();
+        };
         _usageWatch.Start();
         // A balloon that offers something (a switch) does it when clicked; any other balloon clears the offer.
         _tray.BalloonTipClicked += (_, _) =>
@@ -630,7 +634,9 @@ internal sealed class TrayContext : ApplicationContext
                 break;
         }
 
+        RecordUsage();
         var usage = SafeUsage();
+        var peaks = SafeDailyPeaks();
         var now = DateTimeOffset.UtcNow;
         var anyStale = false;
         foreach (var profile in profiles)
@@ -660,7 +666,8 @@ internal sealed class TrayContext : ApplicationContext
                 stale,
                 sample?.SessionResetsIn(now),
                 sample?.WeeklyResetsIn(now),
-                ColorOf(profile)));
+                ColorOf(profile),
+                peaks.GetValueOrDefault(profile.Id)));
         }
 
         if (anyStale)
@@ -960,6 +967,31 @@ internal sealed class TrayContext : ApplicationContext
 
         _tray.ShowBalloonTip(10_000, "Claude usage running low", alert.Message, ToolTipIcon.Warning);
         _balloonAction = alert.SwitchTo is { } target ? () => _ = SwitchToAsync(target) : null;
+    }
+
+    /// <summary>Keeps the roster's own usage history, which the panel's 7-day bars are drawn from.</summary>
+    private void RecordUsage()
+    {
+        try
+        {
+            _switcher.RecordUsage();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            // Missing a reading only leaves a gap in the history.
+        }
+    }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<int?>> SafeDailyPeaks()
+    {
+        try
+        {
+            return _switcher.GetDailyPeaks();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            return new Dictionary<string, IReadOnlyList<int?>>();
+        }
     }
 
     private bool SafeSetting(Func<RosterState, bool> read, bool fallback)

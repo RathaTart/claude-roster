@@ -60,6 +60,7 @@ public sealed class RosterPaths(string root)
     public string ProfilesDirectory => Path.Combine(Root, "profiles");
     public string BackupsDirectory => Path.Combine(Root, "backups");
     public string SharedSessionsStateFile => Path.Combine(Root, "shared-sessions.json");
+    public string UsageHistoryFile => Path.Combine(Root, "usage-history.json");
 
     public string ProfileDirectory(string profileId) =>
         IsValidProfileId(profileId)

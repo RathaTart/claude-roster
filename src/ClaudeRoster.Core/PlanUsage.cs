@@ -133,20 +133,27 @@ public static class PlanUsage
     /// <summary>The newest reading for each profile that has one, keyed by profile id.</summary>
     /// <param name="addOnStoreFolder">Where the add-on's store lives; null leaves it out.</param>
     public static IReadOnlyDictionary<string, UsageSample> ForProfiles(
+        string dataRoot, IReadOnlyList<AccountProfile> profiles, string? addOnStoreFolder = null) =>
+        ByProfile(dataRoot, profiles, addOnStoreFolder).ToDictionary(entry => entry.Key, entry => entry.Value[^1]);
+
+    /// <summary>Every reading for each profile that has any, oldest first, keyed by profile id.</summary>
+    public static IReadOnlyDictionary<string, List<UsageSample>> ByProfile(
         string dataRoot, IReadOnlyList<AccountProfile> profiles, string? addOnStoreFolder = null)
     {
         var readings = LoadHistory(dataRoot);
         if (addOnStoreFolder is not null && LoadAddOn(addOnStoreFolder) is { } latest)
         {
-            readings.Add(latest);
+            readings.Add((latest, null));
         }
 
-        readings.Sort((a, b) => a.At.CompareTo(b.At));
-        var result = new Dictionary<string, UsageSample>();
+        readings.Sort((a, b) => a.Sample.At.CompareTo(b.Sample.At));
+        var result = new Dictionary<string, List<UsageSample>>();
         if (readings.Count == 0)
         {
             return result;
         }
+
+        var orgs = new Dictionary<string, HashSet<string>>();
 
         // A profile was signed in from its LastUsedAt until the next profile's; Claude reopens on it after each switch
         // and takes a reading then.
@@ -158,19 +165,38 @@ public static class PlanUsage
         {
             var from = starts[i].From;
             var until = i + 1 < starts.Count ? starts[i + 1].From : DateTimeOffset.MaxValue;
-            var newest = readings.LastOrDefault(reading => reading.At >= from && reading.At < until);
-            if (newest is not null)
+            var own = readings.Where(reading => reading.Sample.At >= from && reading.Sample.At < until).ToList();
+            if (own.Count > 0)
             {
-                result[starts[i].Profile.Id] = newest;
+                result[starts[i].Profile.Id] = own.Select(reading => reading.Sample).ToList();
+                orgs[starts[i].Profile.Id] = own.Where(reading => reading.Org is not null).Select(reading => reading.Org!).ToHashSet();
             }
+        }
+
+        // Claude's history goes back further than any switch. Its older readings name their organization, and the
+        // readings in each account's own time show which organization that account uses; where only one saved account
+        // uses an organization, its earlier readings are that account's too. Shared ones stay unclaimed.
+        foreach (var (profileId, owned) in orgs)
+        {
+            var mine = owned.Where(org => orgs.Count(other => other.Value.Contains(org)) == 1).ToHashSet();
+            if (mine.Count == 0)
+            {
+                continue;
+            }
+
+            var list = result[profileId];
+            var seen = list.Select(sample => sample.At).ToHashSet();
+            list.AddRange(readings.Where(reading => reading.Org is not null && mine.Contains(reading.Org) && !seen.Contains(reading.Sample.At))
+                .Select(reading => reading.Sample));
+            list.Sort((a, b) => a.At.CompareTo(b.At));
         }
 
         return result;
     }
 
-    private static List<UsageSample> LoadHistory(string dataRoot)
+    private static List<(UsageSample Sample, string? Org)> LoadHistory(string dataRoot)
     {
-        var readings = new List<UsageSample>();
+        var readings = new List<(UsageSample, string?)>();
         if (Parse(Path.Combine(dataRoot, FileName)) is not JsonObject root || root["samples"] is not JsonArray samples)
         {
             return readings;
@@ -181,7 +207,8 @@ public static class PlanUsage
             if (sample["t"] is JsonValue time && time.TryGetValue<long>(out var milliseconds) && At(milliseconds) is { } at)
             {
                 var usage = sample["u"] as JsonObject;
-                readings.Add(new UsageSample(at, Percent(usage?["fh"]), Percent(usage?["sd"])));
+                var org = sample["org"] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+                readings.Add((new UsageSample(at, Percent(usage?["fh"]), Percent(usage?["sd"])), org));
             }
         }
 

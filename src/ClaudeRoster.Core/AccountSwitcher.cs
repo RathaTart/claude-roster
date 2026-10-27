@@ -65,6 +65,17 @@ public sealed class AccountSwitcher
     /// <summary>The plan usage Claude last recorded for each saved account, keyed by profile id.</summary>
     public IReadOnlyDictionary<string, UsageSample> GetUsage() => PlanUsage.ForProfiles(_install.DataRoot, ListProfiles(), _addOnStore);
 
+    /// <summary>Adds the readings Claude and the add-on have now to the roster's own history, which outlasts them.</summary>
+    public void RecordUsage()
+    {
+        SecureDirectory.Ensure(_paths.Root);
+        new UsageHistory(_paths.UsageHistoryFile).Record(PlanUsage.ByProfile(_install.DataRoot, ListProfiles(), _addOnStore), _time.GetUtcNow());
+    }
+
+    /// <summary>Each account's highest session use on each of the last 7 days, keyed by profile id.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<int?>> GetDailyPeaks(TimeZoneInfo? zone = null) =>
+        new UsageHistory(_paths.UsageHistoryFile).DailyPeaks(_time.GetUtcNow(), zone ?? TimeZoneInfo.Local);
+
     public bool HasSavedSignIn(AccountProfile profile) => _snapshots.ReadInfo(_paths.SessionDirectory(profile.Id)) is not null;
 
     public bool ShareCodeSessions => _store.Load().ShareCodeSessions;

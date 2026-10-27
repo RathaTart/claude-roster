@@ -71,6 +71,30 @@ public sealed class PlanUsageTests
     }
 
     [Fact]
+    public void Older_readings_are_credited_by_organization_unless_its_shared()
+    {
+        using var temp = new TempDirectory();
+        var work = Profile(FakeClaude.AccountA, Start);
+        var personal = Profile(FakeClaude.AccountB, Start.AddHours(2));
+        var team = Profile(FakeClaude.AccountC, Start.AddHours(4));
+        WriteHistory(temp.Root,
+            Sample(Start.AddDays(-3), "org-work", """{"fh":50,"sd":20}"""),
+            Sample(Start.AddDays(-2), "org-shared", """{"fh":60,"sd":30}"""),
+            Sample(Start.AddMinutes(5), "org-work", """{"fh":10,"sd":40}"""),
+            Sample(Start.AddMinutes(6), "org-shared", """{"fh":11,"sd":41}"""),
+            Sample(Start.AddHours(2).AddMinutes(1), "org-personal", "{}"),
+            Sample(Start.AddHours(4).AddMinutes(1), "org-shared", """{"fh":70,"sd":50}"""));
+
+        var readings = PlanUsage.ByProfile(temp.Root, [work, personal, team]);
+
+        // Work's own time shows it uses org-work alone, so the reading from three days back is Work's; org-shared
+        // shows up for Work and the team account both, so its older reading stays unclaimed.
+        Assert.Equal([Start.AddDays(-3), Start.AddMinutes(5), Start.AddMinutes(6)], readings[work.Id].Select(sample => sample.At));
+        Assert.Equal([Start.AddHours(4).AddMinutes(1)], readings[team.Id].Select(sample => sample.At));
+        Assert.Equal(11, PlanUsage.ForProfiles(temp.Root, [work, personal, team])[work.Id].SessionUsed);
+    }
+
+    [Fact]
     public void An_account_with_no_readings_is_left_out()
     {
         using var temp = new TempDirectory();
