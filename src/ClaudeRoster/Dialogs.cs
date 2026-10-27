@@ -37,7 +37,7 @@ internal sealed class AliasDialog : Form
 {
     private readonly TextBox _input;
 
-    internal AliasDialog(string title, string prompt, string initial)
+    internal AliasDialog(string title, string prompt, string initial, int maxLength = AccountSwitcher.MaxAliasLength)
     {
         Text = title;
         Font = SystemFonts.MessageBoxFont;
@@ -52,7 +52,7 @@ internal sealed class AliasDialog : Form
 
         var layout = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Dock = DockStyle.Fill };
         var label = new Label { Text = prompt, AutoSize = true, MaximumSize = new Size(360, 0), Margin = new Padding(0, 0, 0, 8) };
-        _input = new TextBox { Text = initial, Width = 360, MaxLength = AccountSwitcher.MaxAliasLength };
+        _input = new TextBox { Text = initial, Width = 360, MaxLength = maxLength };
         var buttons = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.RightToLeft,
@@ -81,6 +81,13 @@ internal sealed class AliasDialog : Form
         return dialog.ShowDialog() == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog._input.Text)
             ? dialog._input.Text.Trim()
             : null;
+    }
+
+    /// <summary>Like <see cref="Ask"/>, but an empty answer counts: "" means cleared, null means cancelled.</summary>
+    public static string? AskOptional(string title, string prompt, string initial, int maxLength)
+    {
+        using var dialog = new AliasDialog(title, prompt, initial, maxLength);
+        return dialog.ShowDialog() == DialogResult.OK ? dialog._input.Text.Trim() : null;
     }
 }
 

@@ -35,6 +35,29 @@ public sealed class AccountSwitcherTests : IDisposable
     }
 
     [Fact]
+    public async Task An_account_keeps_the_colour_and_short_name_it_was_given()
+    {
+        var switcher = CreateSwitcher();
+        var (work, _) = await EnrolTwoAccountsAsync(switcher);
+
+        switcher.SetColor(work.Id, "#3e7cb1");
+        switcher.SetShortName(work.Id, "  Work  ");
+
+        var saved = switcher.ListProfiles().Single(profile => profile.Id == work.Id);
+        Assert.Equal("#3E7CB1", saved.Color);
+        Assert.Equal("Work", saved.ShortName);
+
+        switcher.SetColor(work.Id, null);
+        switcher.SetShortName(work.Id, " ");
+        saved = switcher.ListProfiles().Single(profile => profile.Id == work.Id);
+        Assert.Null(saved.Color);
+        Assert.Null(saved.ShortName);
+
+        Assert.Throws<ClaudeRosterException>(() => switcher.SetColor(work.Id, "blue"));
+        Assert.Throws<ClaudeRosterException>(() => switcher.SetShortName(work.Id, "A name far too long"));
+    }
+
+    [Fact]
     public async Task Uninstalling_deletes_the_roster_data_and_leaves_Claude_signed_in()
     {
         var switcher = CreateSwitcher();

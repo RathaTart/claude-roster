@@ -22,6 +22,7 @@ public sealed record SwitchOutcome(AccountProfile? Profile, string? Warning);
 public sealed class AccountSwitcher
 {
     public const int MaxAliasLength = 40;
+    public const int MaxShortNameLength = 14;
     private const int BackupsToKeep = 5;
 
     private const string UnidentifiedMessage =
@@ -129,6 +130,36 @@ public sealed class AccountSwitcher
         profile.Alias = CheckAlias(state, alias, profile.Id);
         _store.Save(state);
     }
+
+    /// <summary>Sets the account's colour (#RRGGBB), or with null goes back to the one picked from its name.</summary>
+    public void SetColor(string profileId, string? color)
+    {
+        if (color is not null && !IsColor(color))
+        {
+            throw new ClaudeRosterException($"{color} isn't a colour like #3E7CB1.");
+        }
+
+        var state = _store.Load();
+        Require(state, profileId).Color = color?.ToUpperInvariant();
+        _store.Save(state);
+    }
+
+    /// <summary>Sets the name for Claude's title bar button; blank goes back to the account's name.</summary>
+    public void SetShortName(string profileId, string? shortName)
+    {
+        var trimmed = shortName?.Trim();
+        if (trimmed?.Length > MaxShortNameLength)
+        {
+            throw new ClaudeRosterException($"Keep the short name to {MaxShortNameLength} characters or fewer.");
+        }
+
+        var state = _store.Load();
+        Require(state, profileId).ShortName = string.IsNullOrEmpty(trimmed) ? null : trimmed;
+        _store.Save(state);
+    }
+
+    public static bool IsColor(string? color) =>
+        color is { Length: 7 } && color[0] == '#' && color.Skip(1).All(char.IsAsciiHexDigit);
 
     /// <summary>Forgets a saved account and deletes its saved sign-in from this PC. The account itself is untouched.</summary>
     public void Remove(string profileId)

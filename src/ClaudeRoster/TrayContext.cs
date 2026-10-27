@@ -470,13 +470,14 @@ internal sealed class TrayContext : ApplicationContext
             null or { IsUnidentified: true } => new(AppName, null, "Switch Claude account (Claude Roster)"),
             // An old reading carries its age ("93% · 36m") so it can't pass for the live figure.
             { Profile: { } profile } => new(
-                profile.Alias,
+                profile.ShortName ?? profile.Alias,
                 left is null ? null : stale ? $"{left}% · {sample!.ShortAge(now)}" : $"{left}%",
                 sample is { HasLimits: true }
                     ? $"{profile.Alias}: {sample.Summary(now)}\nClaude's reading from {sample.Taken(now)}" +
                       (stale ? ". Claude's usage page may show more." : "")
                     : $"Signed in as {profile.Alias}",
-                stale),
+                stale,
+                ColorOf(profile)),
             { AccountUuid: not null } => new("Account not saved", null, "Open to save the account signed in to Claude"),
             _ => new("Signed out", null, "Claude is signed out"),
         };
@@ -555,6 +556,9 @@ internal sealed class TrayContext : ApplicationContext
             var more = new List<PanelItem>
             {
                 new PanelAction(Glyphs.Rename, "Rename…", !_busy, () => Rename(profile)),
+                new PanelAction(Glyphs.Tag, profile.ShortName is null ? "Short name for Claude's title bar…" : $"Short name: {profile.ShortName}…",
+                    !_busy, () => SetShortName(profile)),
+                new PanelAction(Glyphs.Color, "Colour", !_busy, () => { }, Submenu: ColorChoices(profile)),
                 new PanelAction(Glyphs.Delete, active ? "Remove (switch away first)" : "Remove…", !_busy && !active, () => Remove(profile), Danger: true),
             };
             items.Add(new PanelAccount(
@@ -568,7 +572,8 @@ internal sealed class TrayContext : ApplicationContext
                 more,
                 stale,
                 sample?.SessionResetsIn(now),
-                sample?.WeeklyResetsIn(now)));
+                sample?.WeeklyResetsIn(now),
+                ColorOf(profile)));
         }
 
         if (anyStale)
@@ -621,6 +626,8 @@ internal sealed class TrayContext : ApplicationContext
         public const string Add = "\uE710";
         public const string Save = "\uE74E";
         public const string Rename = "\uE8AC";
+        public const string Tag = "\uE8EC";
+        public const string Color = "\uE790";
         public const string Delete = "\uE74D";
         public const string Folder = "\uE8B7";
         public const string Exit = "\uE7E8";
@@ -687,6 +694,62 @@ internal sealed class TrayContext : ApplicationContext
             CreateNoWindow = true,
             WorkingDirectory = Path.GetTempPath(),
         })?.Dispose();
+    }
+
+    /// <summary>The account's colour: the one chosen, or the one its name picks.</summary>
+    internal static Color ColorOf(AccountProfile profile) =>
+        AccountSwitcher.IsColor(profile.Color) ? ColorTranslator.FromHtml(profile.Color!) : AccountPanel.DefaultColor(profile.Alias);
+
+    private IReadOnlyList<PanelItem> ColorChoices(AccountProfile profile)
+    {
+        var items = new List<PanelItem>
+        {
+            new PanelAction(Glyphs.Color, "Automatic", true, () => SetColor(profile, null),
+                Swatch: AccountPanel.DefaultColor(profile.Alias), Selected: profile.Color is null),
+        };
+        foreach (var (name, color) in AccountPanel.Swatches)
+        {
+            var hex = ColorTranslator.ToHtml(color).ToUpperInvariant();
+            items.Add(new PanelAction(Glyphs.Color, name, true, () => SetColor(profile, hex), Swatch: color,
+                Selected: string.Equals(profile.Color, hex, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return items;
+    }
+
+    private void SetColor(AccountProfile profile, string? color)
+    {
+        try
+        {
+            _switcher.SetColor(profile.Id, color);
+        }
+        catch (Exception exception) when (exception is ClaudeRosterException or IOException or UnauthorizedAccessException)
+        {
+            Dialogs.Error(exception.Message);
+        }
+    }
+
+    private void SetShortName(AccountProfile profile)
+    {
+        var shortName = AliasDialog.AskOptional(
+            "Short name",
+            $"A short name for {profile.Alias} on the button in Claude's title bar, up to {AccountSwitcher.MaxShortNameLength} characters. " +
+            "Leave it empty to use the full name.",
+            profile.ShortName ?? "",
+            AccountSwitcher.MaxShortNameLength);
+        if (shortName is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _switcher.SetShortName(profile.Id, shortName);
+        }
+        catch (Exception exception) when (exception is ClaudeRosterException or IOException or UnauthorizedAccessException)
+        {
+            Dialogs.Error(exception.Message);
+        }
     }
 
     private void Rename(AccountProfile profile)

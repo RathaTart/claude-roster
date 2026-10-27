@@ -8,7 +8,8 @@ namespace ClaudeRoster;
 /// <param name="Detail">Shown dimmer after the name, e.g. the session usage left.</param>
 /// <param name="Tip">The tooltip, e.g. the full usage summary.</param>
 /// <param name="DetailStale">The detail is an old reading, so it's drawn fainter.</param>
-internal sealed record TitleBarLabel(string Text, string? Detail, string Tip, bool DetailStale = false);
+/// <param name="Dot">The account's colour, drawn as a dot in place of the person icon.</param>
+internal sealed record TitleBarLabel(string Text, string? Detail, string Tip, bool DetailStale = false, Color? Dot = null);
 
 /// <summary>
 /// The account button pinned to the top left of Claude's window, beside its back and forward arrows. It follows the
@@ -180,7 +181,18 @@ internal sealed class TitleBarButton : Form
         var icon = new Rectangle(Px(Padding96), 0, Px(Icon96), Height);
         var chevron = new Rectangle(Width - Px(Padding96) - Px(Chevron96), 0, Px(Chevron96), Height);
         var text = Rectangle.FromLTRB(icon.Right + Px(Gap96), 0, chevron.Left - Px(Gap96), Height);
-        TextRenderer.DrawText(graphics, ContactGlyph, _iconFont, icon, palette.Text, centered);
+        if (_text.Dot is { } dot)
+        {
+            // The account's colour: which account Claude is on, at a glance.
+            var size = Px(10);
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var fill = new SolidBrush(dot);
+            graphics.FillEllipse(fill, icon.Left + (icon.Width - size) / 2, (Height - size) / 2, size, size);
+        }
+        else
+        {
+            TextRenderer.DrawText(graphics, ContactGlyph, _iconFont, icon, palette.Text, centered);
+        }
         TextRenderer.DrawText(graphics, ChevronGlyph, _chevronFont, chevron, palette.Dim, centered);
         const TextFormatFlags line = TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
         if (_text.Detail is { } detail)

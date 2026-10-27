@@ -61,6 +61,7 @@ internal sealed record PanelToggle(string Text, bool On, bool Enabled, Action<bo
 internal sealed class AccountPanel : Form
 {
     private const int Width96 = 330;
+    private const int SubmenuWidth96 = 290;
     private const int Pad96 = 6;
     private const string MoreGlyph = "";
     private const string CheckGlyph = "";
@@ -364,7 +365,7 @@ internal sealed class AccountPanel : Form
     private void Arrange(out Size size)
     {
         _rows.Clear();
-        var width = Px(Width96);
+        var width = Px(_parent is null ? Width96 : SubmenuWidth96);
         var y = Px(Pad96);
         foreach (var item in _items)
         {

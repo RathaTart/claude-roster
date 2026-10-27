@@ -12,6 +12,12 @@ public sealed class AccountProfile
 
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastUsedAt { get; set; }
+
+    /// <summary>The colour the account wears in the panel and on Claude's title bar, as #RRGGBB; null picks one.</summary>
+    public string? Color { get; set; }
+
+    /// <summary>What the button on Claude's title bar calls it, when the full name is too long; null uses the name.</summary>
+    public string? ShortName { get; set; }
 }
 
 public sealed class RosterState
