@@ -79,6 +79,17 @@ public sealed class AccountSwitcher
 
     public bool ShowTitleBarButton => _store.Load().ShowTitleBarButton;
 
+    /// <summary>The roster's settings as saved (and its accounts, which are better read through ListProfiles).</summary>
+    public RosterState Settings => _store.Load();
+
+    /// <summary>Changes and saves settings in one go.</summary>
+    public void ChangeSettings(Action<RosterState> change)
+    {
+        var state = _store.Load();
+        change(state);
+        _store.Save(state);
+    }
+
     public void SetShowTitleBarButton(bool enabled)
     {
         var state = _store.Load();

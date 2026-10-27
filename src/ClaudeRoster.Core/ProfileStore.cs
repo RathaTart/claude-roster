@@ -31,6 +31,15 @@ public sealed class RosterState
     /// <summary>Show the account button pinned to the top left of Claude's window.</summary>
     public bool ShowTitleBarButton { get; set; } = true;
 
+    /// <summary>Warn when the signed-in account runs low on usage, and suggest one with more left.</summary>
+    public bool UsageAlerts { get; set; } = true;
+
+    /// <summary>Ctrl+Alt+R opens the account panel from anywhere.</summary>
+    public bool Shortcut { get; set; } = true;
+
+    /// <summary>Ask GitHub once a day whether there's a newer release: Claude Roster's only network request, off unless chosen.</summary>
+    public bool CheckForUpdates { get; set; }
+
     public AccountProfile? Find(string id) => Profiles.FirstOrDefault(profile => profile.Id == id);
 
     public AccountProfile? FindByAccount(string? accountUuid) =>

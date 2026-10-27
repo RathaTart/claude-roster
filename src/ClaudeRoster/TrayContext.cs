@@ -21,6 +21,9 @@ internal sealed class TrayContext : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly System.Windows.Forms.Timer _signInWatch = new() { Interval = 2000 };
     private readonly System.Windows.Forms.Timer _claudeWatch = new() { Interval = 2000 };
+    private readonly System.Windows.Forms.Timer _usageWatch = new() { Interval = 30_000 };
+    private readonly HashSet<string> _alerted = [];
+    private Action? _balloonAction;
     private readonly RegisteredWaitHandle? _showRequestWait;
     private readonly TitleBarButton? _titleBar;
     private AccountPanel? _panel;
@@ -57,6 +60,15 @@ internal sealed class TrayContext : ApplicationContext
         };
         _signInWatch.Tick += (_, _) => CheckForNewSignIn();
         _claudeWatch.Tick += (_, _) => UpdateVisibility();
+        _usageWatch.Tick += (_, _) => CheckUsage();
+        _usageWatch.Start();
+        // A balloon that offers something (a switch) does it when clicked; any other balloon clears the offer.
+        _tray.BalloonTipClicked += (_, _) =>
+        {
+            var action = _balloonAction;
+            _balloonAction = null;
+            action?.Invoke();
+        };
 
         if (showRequest is not null)
         {
@@ -98,6 +110,7 @@ internal sealed class TrayContext : ApplicationContext
             _panel?.Close();
             _titleBar?.Dispose();
             _claudeWatch.Dispose();
+            _usageWatch.Dispose();
             _signInWatch.Dispose();
             _tray.Visible = false;
             _tray.Dispose();
@@ -602,6 +615,8 @@ internal sealed class TrayContext : ApplicationContext
             items.Add(new PanelToggle("Show account button in Claude", SafeTitleBarSetting(), true, ToggleTitleBar));
         }
 
+        items.Add(new PanelToggle("Warn when usage runs low", SafeSetting(state => state.UsageAlerts, fallback: true), true,
+            on => ChangeSetting(state => state.UsageAlerts = on)));
         items.Add(new PanelToggle("Start with Windows", StartupRegistration.IsEnabled(), true, StartupRegistration.SetEnabled));
         items.Add(new PanelSeparator());
         items.Add(new PanelAction(Glyphs.Folder, "Open Claude Roster folder", true, OpenDataFolder));
@@ -829,7 +844,71 @@ internal sealed class TrayContext : ApplicationContext
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_switcher.Paths.Root}\"") { UseShellExecute = false })?.Dispose();
     }
 
-    private void Notify(string text) => _tray.ShowBalloonTip(5000, AppName, text, ToolTipIcon.Info);
+    private void Notify(string text)
+    {
+        _balloonAction = null;
+        _tray.ShowBalloonTip(5000, AppName, text, ToolTipIcon.Info);
+    }
+
+    /// <summary>
+    /// Every 30 seconds: whether the signed-in account has just run low, and if so a warning that offers the saved
+    /// account with the most left. Clicking it switches, after the usual confirmation.
+    /// </summary>
+    private void CheckUsage()
+    {
+        if (_busy || _prompting || !_tray.Visible || !SafeSetting(state => state.UsageAlerts, fallback: false))
+        {
+            return;
+        }
+
+        UsageAlert? alert;
+        try
+        {
+            if (_switcher.PeekStatus().Profile is not { } signedIn)
+            {
+                return;
+            }
+
+            alert = UsageAlerts.Check(
+                signedIn, _switcher.ListProfiles(), SafeUsage(), _switcher.HasSavedSignIn, _alerted, DateTimeOffset.UtcNow);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            return;
+        }
+
+        if (alert is null)
+        {
+            return;
+        }
+
+        _tray.ShowBalloonTip(10_000, "Claude usage running low", alert.Message, ToolTipIcon.Warning);
+        _balloonAction = alert.SwitchTo is { } target ? () => _ = SwitchToAsync(target) : null;
+    }
+
+    private bool SafeSetting(Func<RosterState, bool> read, bool fallback)
+    {
+        try
+        {
+            return read(_switcher.Settings);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            return fallback;
+        }
+    }
+
+    private void ChangeSetting(Action<RosterState> change)
+    {
+        try
+        {
+            _switcher.ChangeSettings(change);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            Dialogs.Error(exception.Message);
+        }
+    }
 
     private static string Describe(LiveStatus? status) => status switch
     {
