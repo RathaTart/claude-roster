@@ -25,6 +25,10 @@ internal sealed class TrayContext : ApplicationContext
     private readonly HashSet<string> _alerted = [];
     private Action? _balloonAction;
     private readonly GlobalShortcut _shortcut = new();
+    private readonly System.Windows.Forms.Timer _updateWatch = new() { Interval = 60_000 };
+    private DateTime _nextUpdateCheck = DateTime.UtcNow.AddMinutes(1);
+    private UpdateInfo? _update;
+    private bool _checkingForUpdate;
     private readonly RegisteredWaitHandle? _showRequestWait;
     private readonly TitleBarButton? _titleBar;
     private AccountPanel? _panel;
@@ -63,6 +67,8 @@ internal sealed class TrayContext : ApplicationContext
         _claudeWatch.Tick += (_, _) => UpdateVisibility();
         _shortcut.Pressed += OnShortcut;
         _shortcut.Apply(SafeShortcutChoice());
+        _updateWatch.Tick += async (_, _) => await CheckForUpdateAsync(force: false);
+        _updateWatch.Start();
         _usageWatch.Tick += (_, _) =>
         {
             RecordUsage();
@@ -119,6 +125,7 @@ internal sealed class TrayContext : ApplicationContext
             _claudeWatch.Dispose();
             _usageWatch.Dispose();
             _shortcut.Dispose();
+            _updateWatch.Dispose();
             _signInWatch.Dispose();
             _tray.Visible = false;
             _tray.Dispose();
@@ -276,7 +283,7 @@ internal sealed class TrayContext : ApplicationContext
         startup.Click += (_, _) => StartupRegistration.SetEnabled(!startup.Checked);
         _menu.Items.Add(startup);
         AddItem(_menu.Items, "Open Claude Roster folder", OpenDataFolder);
-        AddItem(_menu.Items, "Uninstall Claude Roster…", Uninstall);
+        AddItem(_menu.Items, "Uninstall Claude Roster…", () => _ = UninstallAsync());
         AddItem(_menu.Items, "Exit", ExitThread);
     }
 
@@ -699,10 +706,24 @@ internal sealed class TrayContext : ApplicationContext
         items.Add(new PanelToggle("Warn when usage runs low", SafeSetting(state => state.UsageAlerts, fallback: true), true,
             on => ChangeSetting(state => state.UsageAlerts = on)));
         items.Add(ShortcutItem());
+        items.Add(new PanelToggle("Check GitHub for updates daily", SafeSetting(state => state.CheckForUpdates, fallback: false), true, on =>
+        {
+            ChangeSetting(state => state.CheckForUpdates = on);
+            if (on)
+            {
+                _ = CheckForUpdateAsync(force: true);
+            }
+        }));
         items.Add(new PanelToggle("Start with Windows", StartupRegistration.IsEnabled(), true, StartupRegistration.SetEnabled));
         items.Add(new PanelSeparator());
         items.Add(new PanelAction(Glyphs.Folder, "Open Claude Roster folder", true, OpenDataFolder));
-        items.Add(new PanelAction(Glyphs.Delete, "Uninstall Claude Roster…", !_busy, Uninstall, Danger: true));
+        if (_update is { } update)
+        {
+            items.Add(new PanelAction(Glyphs.Download, $"Claude Roster {update.Version.ToString(3)} is out: open the download page", true,
+                () => OpenUpdatePage(update)));
+        }
+
+        items.Add(new PanelAction(Glyphs.Delete, "Uninstall Claude Roster…", !_busy, () => _ = UninstallAsync(), Danger: true));
         items.Add(new PanelAction(Glyphs.Exit, "Exit", true, ExitThread));
     }
 
@@ -725,25 +746,29 @@ internal sealed class TrayContext : ApplicationContext
         public const string Rename = "\uE8AC";
         public const string Tag = "\uE8EC";
         public const string Keyboard = "\uE765";
+        public const string Download = "\uE896";
         public const string Color = "\uE790";
         public const string Delete = "\uE74D";
         public const string Folder = "\uE8B7";
         public const string Exit = "\uE7E8";
     }
 
-    internal static string UninstallConfirmation(string? signedIn) =>
+    internal static string UninstallConfirmation(string? signedIn, bool addOn = false) =>
         "Uninstall Claude Roster?\n\n" +
-        "This deletes every saved account and backup on this PC, turns off Start with Windows and removes Claude Roster itself. It can't be undone.\n\n" +
+        "This deletes every saved account and backup on this PC, turns off Start with Windows and removes Claude Roster itself" +
+        (addOn ? $", along with its {RosterAddOn.PluginName} add-on in Claude Code" : "") + ". It can't be undone.\n\n" +
         $"Claude stays signed in to {(signedIn is null ? "its current account" : signedIn)}. To use your other accounts again, sign in to them in Claude. " +
         "Claude's own data and your Claude Code sessions aren't touched.";
 
     /// <summary>
     /// Removes everything: the saved accounts first (if that fails, nothing else is touched, so it can be retried),
-    /// then the registry entries, then the exe once this process has exited.
+    /// then the Claude Code add-on, the registry entries, and the exe once this process has exited.
     /// </summary>
-    private void Uninstall()
+    private async Task UninstallAsync()
     {
-        if (_busy || !Dialogs.Confirm(UninstallConfirmation(SafeStatus()?.Profile?.Alias)))
+        var claudeFolder = RosterAddOn.DefaultClaudeFolder();
+        var addOn = RosterAddOn.IsInstalled(claudeFolder) || RosterAddOn.HasMarketplace(claudeFolder);
+        if (_busy || !Dialogs.Confirm(UninstallConfirmation(SafeStatus()?.Profile?.Alias, addOn)))
         {
             return;
         }
@@ -756,6 +781,27 @@ internal sealed class TrayContext : ApplicationContext
         {
             Dialogs.Error($"Couldn't delete the saved accounts, so nothing was uninstalled: {exception.Message}");
             return;
+        }
+
+        if (addOn)
+        {
+            _busy = true;
+            _tray.Text = "Removing the Claude Code add-on…";
+            string? problem;
+            try
+            {
+                problem = await RosterAddOn.RemoveAsync(claudeFolder);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                problem = $"The {RosterAddOn.PluginName} add-on's saved figures couldn't be deleted: {exception.Message}";
+            }
+
+            if (problem is not null)
+            {
+                // The rest goes ahead: the add-on alone is harmless, and the message says how to finish.
+                Dialogs.Error(problem);
+            }
         }
 
         try
@@ -968,6 +1014,42 @@ internal sealed class TrayContext : ApplicationContext
         _tray.ShowBalloonTip(10_000, "Claude usage running low", alert.Message, ToolTipIcon.Warning);
         _balloonAction = alert.SwitchTo is { } target ? () => _ = SwitchToAsync(target) : null;
     }
+
+    /// <summary>
+    /// The opt-in update check: a minute after starting, then once a day, ask GitHub for the latest release, and say
+    /// once when it's newer. It's Claude Roster's only network request, and it's off unless chosen in the panel.
+    /// </summary>
+    private async Task CheckForUpdateAsync(bool force)
+    {
+        if (_checkingForUpdate || (!force && DateTime.UtcNow < _nextUpdateCheck)
+            || !SafeSetting(state => state.CheckForUpdates, fallback: false))
+        {
+            return;
+        }
+
+        _checkingForUpdate = true;
+        _nextUpdateCheck = DateTime.UtcNow.AddDays(1);
+        try
+        {
+            var update = await new UpdateCheck().FindNewerAsync(UpdateCheck.Current);
+            if (update is null || update.Version == _update?.Version)
+            {
+                return;
+            }
+
+            _update = update;
+            _tray.ShowBalloonTip(10_000, AppName, $"Claude Roster {update.Version.ToString(3)} is out. Click to open its download page.", ToolTipIcon.Info);
+            _balloonAction = () => OpenUpdatePage(update);
+        }
+        finally
+        {
+            _checkingForUpdate = false;
+        }
+    }
+
+    /// <summary>Opens the release page in the browser; the person downloads it themselves.</summary>
+    private static void OpenUpdatePage(UpdateInfo update) =>
+        Process.Start(new ProcessStartInfo(update.Page.AbsoluteUri) { UseShellExecute = true })?.Dispose();
 
     /// <summary>Keeps the roster's own usage history, which the panel's 7-day bars are drawn from.</summary>
     private void RecordUsage()
