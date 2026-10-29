@@ -284,7 +284,24 @@ internal sealed class TitleBarButton : Form
     /// <summary>Puts the button directly above Claude's window, so other apps still cover both.</summary>
     private void Raise()
     {
-        var above = GetWindow(_target, GwHwndPrev);
+        if (GetWindow(_target, GwHwndPrev) == Handle)
+        {
+            return;
+        }
+
+        DemoteOwnedTopmost();
+        PlaceAbove(GetWindow(_target, GwHwndPrev));
+        if (!IsJustAboveClaude())
+        {
+            // Still stuck: making the button "not topmost" frees it (seen on a live button), then put it back in place.
+            SetWindowPos(Handle, HwndNoTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+            PlaceAbove(GetWindow(_target, GwHwndPrev));
+        }
+    }
+
+    /// <summary>Puts the button just below <paramref name="above"/>, or at the top when that's topmost or none.</summary>
+    private void PlaceAbove(nint above)
+    {
         if (above == Handle)
         {
             return;
@@ -292,6 +309,25 @@ internal sealed class TitleBarButton : Form
 
         var topmost = above != 0 && (GetWindowLongPtrW(above, GwlExStyle) & WsExTopmost) != 0;
         SetWindowPos(Handle, above == 0 || topmost ? HwndTop : above, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
+
+    /// <summary>
+    /// The tooltip makes itself topmost when it shows and stays so. While the button owns a topmost window, Windows can
+    /// ignore changes to the button's z-order, so once Claude came forward the button stayed hidden under it.
+    /// </summary>
+    private void DemoteOwnedTopmost()
+    {
+        EnumThreadWindows(GetCurrentThreadId(), (window, _) =>
+        {
+            if (GetWindow(window, GwOwner) == Handle
+                && !IsWindowVisible(window)
+                && (GetWindowLongPtrW(window, GwlExStyle) & WsExTopmost) != 0)
+            {
+                SetWindowPos(window, HwndNoTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+            }
+
+            return true;
+        }, 0);
     }
 
     /// <summary>
@@ -514,6 +550,7 @@ internal sealed class TitleBarButton : Form
     private const uint SwpNoZOrder = 0x4;
     private const uint SwpNoActivate = 0x10;
     private static readonly nint HwndTop = 0;
+    private static readonly nint HwndNoTopmost = -2;
     private const int ObjIdWindow = 0;
     private const uint EventSystemForeground = 0x0003;
     private const uint EventSystemMinimizeEnd = 0x0017;
@@ -550,6 +587,12 @@ internal sealed class TitleBarButton : Form
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc callback, nint parameter);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumThreadWindows(uint threadId, EnumWindowsProc callback, nint parameter);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint window, out uint processId);
