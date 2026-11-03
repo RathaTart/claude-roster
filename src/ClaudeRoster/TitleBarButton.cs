@@ -232,7 +232,7 @@ internal sealed class TitleBarButton : Form
         }
 
         Follow();
-        if (Visible && !IsJustAboveClaude())
+        if (Visible)
         {
             Raise();
         }
@@ -284,7 +284,8 @@ internal sealed class TitleBarButton : Form
     /// <summary>Puts the button directly above Claude's window, so other apps still cover both.</summary>
     private void Raise()
     {
-        if (GetWindow(_target, GwHwndPrev) == Handle)
+        // Not "is the button the window right before Claude": once placed, WinForms' hidden owner window ends up between them.
+        if (IsJustAboveClaude())
         {
             return;
         }
