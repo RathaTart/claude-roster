@@ -46,8 +46,10 @@ public sealed class ClaudeProcess(ClaudeInstall install) : IClaudeProcess
             return false;
         }
 
-        // Store install: ...\WindowsApps\AnthropicPBC.Claude_<version>_<arch>__<publisher>\app\Claude.exe
-        if (normalized.Contains(@"\WindowsApps\AnthropicPBC.Claude_", StringComparison.OrdinalIgnoreCase))
+        // MSIX install: ...\WindowsApps\<package name>_<version>_<arch>__<publisher>\app\Claude.exe, where the package
+        // is AnthropicPBC.Claude (Microsoft Store) or Claude (the installer from claude.ai).
+        if (ClaudeInstall.PackageNames.Any(name =>
+                normalized.Contains($@"\WindowsApps\{name}_", StringComparison.OrdinalIgnoreCase)))
         {
             return normalized.EndsWith(@"\app\Claude.exe", StringComparison.OrdinalIgnoreCase);
         }
@@ -64,11 +66,17 @@ public sealed class ClaudeProcess(ClaudeInstall install) : IClaudeProcess
                && Path.GetFileName(Path.GetDirectoryName(directory) ?? "").Equals("AnthropicClaude", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Only ids for the Claude Store app are launched, so nothing else can ride along to explorer.exe.</summary>
-    public static bool IsClaudeAppUserModelId(string? id) =>
-        id is not null
-        && id.StartsWith("AnthropicPBC.Claude_", StringComparison.OrdinalIgnoreCase)
-        && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '!' or '-');
+    /// <summary>Only ids for the Claude MSIX app are launched, so nothing else can ride along to explorer.exe.</summary>
+    public static bool IsClaudeAppUserModelId(string? id)
+    {
+        if (id is null || !id.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '!' or '-'))
+        {
+            return false;
+        }
+
+        var bang = id.IndexOf('!');
+        return bang > 0 && bang < id.Length - 1 && ClaudeInstall.IsClaudePackageFamilyName(id[..bang]);
+    }
 
     /// <summary>A cheaper check than <see cref="Capture"/> for polling.</summary>
     public bool IsRunning() => FindDesktop(NativeProcesses.Snapshot()).Count > 0;

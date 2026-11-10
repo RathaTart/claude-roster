@@ -14,6 +14,10 @@ public sealed class RecognitionTests
     [InlineData(@"C:\Users\me\AppData\Roaming\Claude\claude-code\2.1.295\d2e29494ec83\claude.exe", false)]
     [InlineData(@"C:\Users\me\.vscode\extensions\anthropic.claude-code-2.1.295-win32-x64\resources\native-binary\claude.exe", false)]
     [InlineData(@"C:\Program Files\WindowsApps\AnthropicPBC.Claude_2.31226.1.0_x64__fnn82j28hfe8t\app\Updater.exe", false)]
+    [InlineData(@"C:\Program Files\WindowsApps\Claude_1.1.3363.0_x64__pzs8sxrjxfjjc\app\Claude.exe", true)]
+    [InlineData(@"C:\Program Files\WindowsApps\Claude_1.1.3363.0_arm64__pzs8sxrjxfjjc\app\Claude.exe", true)]
+    [InlineData(@"C:\Program Files\WindowsApps\Claude_1.1.3363.0_x64__pzs8sxrjxfjjc\app\resources\claude.exe", false)]
+    [InlineData(@"C:\Program Files\WindowsApps\ClaudeHelper_1.0.0.0_x64__abcdefghijklm\app\Claude.exe", false)]
     [InlineData(null, false)]
     public void Only_the_desktop_app_counts_as_Claude(string? path, bool expected) =>
         Assert.Equal(expected, ClaudeProcess.IsDesktopExecutable(path));
@@ -22,6 +26,12 @@ public sealed class RecognitionTests
     [InlineData("AnthropicPBC.Claude_fnn82j28hfe8t!Claude", true)]
     [InlineData("AnthropicPBC.Claude_fnn82j28hfe8t!Claude --flag", false)]
     [InlineData("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", false)]
+    [InlineData("Claude_pzs8sxrjxfjjc!Claude", true)]
+    [InlineData("claude_pzs8sxrjxfjjc!Claude", true)]
+    [InlineData("Claude_pzs8sxrjxfjjc", false)]
+    [InlineData("Claude_pzs8sxrjxfjjc!", false)]
+    [InlineData("ClaudeHelper_abcdefghijklm!App", false)]
+    [InlineData("Claude_x.y_pzs8sxrjxfjjc!Claude", false)]
     [InlineData(null, false)]
     public void Only_Claude_store_ids_are_launched(string? appId, bool expected) =>
         Assert.Equal(expected, ClaudeProcess.IsClaudeAppUserModelId(appId));
@@ -77,6 +87,59 @@ public sealed class RecognitionTests
 
         Assert.Equal(moved, install?.DataRoot);
         Assert.Equal(StoreFamily, install?.PackageFamilyName);
+    }
+
+    private const string DownloadFamily = "Claude_pzs8sxrjxfjjc";
+
+    [Fact]
+    public void Install_from_claude_ai_is_found_in_its_data_folder()
+    {
+        using var temp = new TempDirectory();
+        Directory.CreateDirectory(temp.Combine($@"Local\Packages\{DownloadFamily}"));
+        var moved = temp.Combine($@"Local\Claude-Data\{DownloadFamily.ToLowerInvariant()}");
+        FakeClaude.SignIn(moved, FakeClaude.AccountA, "live");
+
+        var install = ClaudeInstall.Locate(temp.Combine("Local"), temp.Combine("Roaming"));
+
+        Assert.Equal(moved, install?.DataRoot);
+        Assert.Equal(DownloadFamily, install?.PackageFamilyName);
+        Assert.Equal(DownloadFamily + "!Claude", install?.DefaultAppUserModelId);
+    }
+
+    [Fact]
+    public void Install_from_claude_ai_is_found_in_its_old_folder()
+    {
+        using var temp = new TempDirectory();
+        var legacy = temp.Combine($@"Local\Packages\{DownloadFamily}\LocalCache\Roaming\Claude");
+        Directory.CreateDirectory(legacy);
+
+        var install = ClaudeInstall.Locate(temp.Combine("Local"), temp.Combine("Roaming"));
+
+        Assert.Equal(legacy, install?.DataRoot);
+        Assert.Equal(DownloadFamily, install?.PackageFamilyName);
+    }
+
+    [Theory]
+    [InlineData(StoreFamily)]
+    [InlineData(DownloadFamily)]
+    public void With_both_installs_the_one_used_last_wins(string usedLast)
+    {
+        using var temp = new TempDirectory();
+        var roots = new Dictionary<string, string>();
+        foreach (var family in new[] { StoreFamily, DownloadFamily })
+        {
+            Directory.CreateDirectory(temp.Combine($@"Local\Packages\{family}"));
+            roots[family] = temp.Combine($@"Local\Claude-Data\{family.ToLowerInvariant()}");
+            FakeClaude.SignIn(roots[family], FakeClaude.AccountA, family);
+            File.SetLastWriteTimeUtc(Path.Combine(roots[family], ClaudeConfig.FileName), new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        }
+
+        File.SetLastWriteTimeUtc(Path.Combine(roots[usedLast], ClaudeConfig.FileName), new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var install = ClaudeInstall.Locate(temp.Combine("Local"), temp.Combine("Roaming"));
+
+        Assert.Equal(roots[usedLast], install?.DataRoot);
+        Assert.Equal(usedLast, install?.PackageFamilyName);
     }
 
     [Fact]

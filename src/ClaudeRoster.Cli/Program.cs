@@ -109,7 +109,7 @@ void PrintStatus()
         : "no";
 
     Console.WriteLine($"Claude data     {install.DataRoot}");
-    Console.WriteLine($"Store package   {install.PackageFamilyName ?? "(classic install)"}");
+    Console.WriteLine($"App package     {install.PackageFamilyName ?? "(classic install)"}");
     Console.WriteLine($"Claude running  {running}");
     Console.WriteLine($"Signed in       {signedIn}");
     Console.WriteLine($"Saved accounts  {switcher.ListProfiles().Count}");

@@ -2,7 +2,7 @@ namespace ClaudeRoster.Core;
 
 /// <summary>Where the Claude desktop app keeps its data and how to start it again.</summary>
 /// <param name="DataRoot">The app's Electron user-data folder.</param>
-/// <param name="PackageFamilyName">Set for the Microsoft Store (MSIX) install.</param>
+/// <param name="PackageFamilyName">Set for the MSIX install (from claude.ai or the Microsoft Store).</param>
 /// <param name="LauncherPath">Set for the classic installer, which starts from a plain exe.</param>
 public sealed record ClaudeInstall(string DataRoot, string? PackageFamilyName, string? LauncherPath)
 {
@@ -15,9 +15,33 @@ public sealed record ClaudeInstall(string DataRoot, string? PackageFamilyName, s
     /// <summary>Claude leaves ".user-data-left.&lt;install id&gt;" in the old folder after moving its data out.</summary>
     public const string MovedMarkerPrefix = ".user-data-left.";
 
-    private const string PackageName = "AnthropicPBC.Claude";
+    /// <summary>
+    /// The MSIX package names Claude ships under: "Claude" is the installer downloaded from claude.ai
+    /// (Claude_pzs8sxrjxfjjc), "AnthropicPBC.Claude" the Microsoft Store app (AnthropicPBC.Claude_fnn82j28hfe8t).
+    /// </summary>
+    public static readonly IReadOnlyList<string> PackageNames = ["AnthropicPBC.Claude", "Claude"];
 
     public string? DefaultAppUserModelId => PackageFamilyName is null ? null : PackageFamilyName + "!Claude";
+
+    /// <summary>True for "&lt;one of <see cref="PackageNames"/>&gt;_&lt;publisher id&gt;", in any case.</summary>
+    public static bool IsClaudePackageFamilyName(string? familyName)
+    {
+        if (familyName is null)
+        {
+            return false;
+        }
+
+        var separator = familyName.LastIndexOf('_');
+        if (separator <= 0 || separator == familyName.Length - 1)
+        {
+            return false;
+        }
+
+        var name = familyName[..separator];
+        var publisher = familyName[(separator + 1)..];
+        return PackageNames.Any(known => known.Equals(name, StringComparison.OrdinalIgnoreCase))
+               && publisher.All(char.IsAsciiLetterOrDigit);
+    }
 
     public static ClaudeInstall? Locate(string? localAppData = null, string? roamingAppData = null)
     {
@@ -31,19 +55,39 @@ public sealed record ClaudeInstall(string DataRoot, string? PackageFamilyName, s
         roamingAppData ??= Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var moved = Path.Combine(localAppData, MovedDataFolderName);
 
-        // Store install: the data lives in Claude-Data\<package family name, lower case>, or, before Claude moved
-        // it, in the package's LocalCache (Windows redirects the app's %APPDATA% writes there).
+        // MSIX install (from claude.ai or the Microsoft Store): the data lives in Claude-Data\<package family name,
+        // lower case>, or, before Claude moved it, in the package's LocalCache (Windows redirects the app's %APPDATA%
+        // writes there). With both installed, the one used last wins.
         var packages = Path.Combine(localAppData, "Packages");
         if (Directory.Exists(packages))
         {
-            foreach (var package in Directory.EnumerateDirectories(packages, PackageName + "_*"))
+            ClaudeInstall? latest = null;
+            var latestUse = DateTime.MinValue;
+            foreach (var package in PackageNames.SelectMany(name => Directory.EnumerateDirectories(packages, name + "_*")))
             {
                 var familyName = Path.GetFileName(package);
-                var dataRoot = ResolveDataRoot(Path.Combine(package, "LocalCache", "Roaming", "Claude"), moved, familyName);
-                if (dataRoot is not null)
+                if (!IsClaudePackageFamilyName(familyName))
                 {
-                    return new ClaudeInstall(dataRoot, familyName, null);
+                    continue;
                 }
+
+                var dataRoot = ResolveDataRoot(Path.Combine(package, "LocalCache", "Roaming", "Claude"), moved, familyName);
+                if (dataRoot is null)
+                {
+                    continue;
+                }
+
+                var lastUse = LastUse(dataRoot);
+                if (latest is null || lastUse > latestUse)
+                {
+                    latest = new ClaudeInstall(dataRoot, familyName, null);
+                    latestUse = lastUse;
+                }
+            }
+
+            if (latest is not null)
+            {
+                return latest;
             }
         }
 
@@ -96,5 +140,12 @@ public sealed record ClaudeInstall(string DataRoot, string? PackageFamilyName, s
         }
 
         return legacyExists && !marked ? legacy : null;
+    }
+
+    /// <summary>Claude rewrites config.json while it runs, so its age tells which install was used last.</summary>
+    private static DateTime LastUse(string dataRoot)
+    {
+        var config = Path.Combine(dataRoot, "config.json");
+        return File.Exists(config) ? File.GetLastWriteTimeUtc(config) : Directory.GetLastWriteTimeUtc(dataRoot);
     }
 }

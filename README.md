@@ -45,7 +45,7 @@
 ## Requirements
 
 - Windows 10 or 11 (x64)
-- The Claude desktop app: the Microsoft Store version (tested) or the classic installer
+- The Claude desktop app: the version from [claude.ai/download](https://claude.ai/download), the Microsoft Store version (tested), or the classic installer
 - Optional, for live usage: the [Claude Code](https://docs.claude.com/en/docs/claude-code) command line, to install the add-on
 - The [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0), which comes with the .NET 9 SDK
 
@@ -192,7 +192,7 @@ In the classic menu, **Manage accounts** has Rename and Remove.
 
 The Claude desktop app is an Electron app. Its sign-in lives in a handful of files in its data folder. Claude Roster copies exactly those in and out, and leaves everything else alone.
 
-Newer versions of Claude keep that folder in `%LOCALAPPDATA%\Claude-Data\<install id>`. Older ones used `%APPDATA%\Claude`, or the Store package's `LocalCache`. When Claude moves its data, it leaves a `.user-data-left.<install id>` marker in the old folder. Claude Roster follows that marker and never uses a folder Claude has left. `claude-roster status` shows which folder is in use.
+Newer versions of Claude keep that folder in `%LOCALAPPDATA%\Claude-Data\<install id>`. Older ones used `%APPDATA%\Claude`, or the app package's `LocalCache` (`Claude_pzs8sxrjxfjjc` when installed from claude.ai, `AnthropicPBC.Claude_fnn82j28hfe8t` from the Microsoft Store). When Claude moves its data, it leaves a `.user-data-left.<install id>` marker in the old folder. Claude Roster follows that marker and never uses a folder Claude has left. `claude-roster status` shows which folder is in use.
 
 <details>
 <summary><b>What gets saved and swapped</b></summary>
@@ -280,7 +280,7 @@ To uninstall by hand instead: turn off **Start with Windows**, choose **Exit**, 
 ```text
 > claude-roster status
 Claude data     C:\Users\you\AppData\Local\Claude-Data\anthropicpbc.claude_fnn82j28hfe8t
-Store package   AnthropicPBC.Claude_fnn82j28hfe8t
+App package     AnthropicPBC.Claude_fnn82j28hfe8t
 Claude running  yes, 1 Claude Code session(s) open
 Signed in       Work (11111111…)
 Saved accounts  2
@@ -335,7 +335,7 @@ The tests and the screenshot tool run on throwaway data. For manual testing, `CL
 - Usage is only as fresh as the last reading: the add-on's last Claude Code reply, or the desktop app's occasional one. Old readings are greyed out. Claude's usage file format isn't documented either; if it changes, accounts simply show no usage.
 - Readings don't say which account they belong to, so each is credited to the account that was signed in when it was taken.
 - The panel and button follow the Windows app theme. Claude's own appearance setting can't be read from outside.
-- The Microsoft Store install is tested. The classic installer (`%LOCALAPPDATA%\AnthropicClaude`) is supported by path rules but hasn't been tested.
+- The Microsoft Store install is tested. The installer from claude.ai (package `Claude_pzs8sxrjxfjjc`) and the classic installer (`%LOCALAPPDATA%\AnthropicClaude`) are supported by path rules but haven't been tested.
 
 ## Credits
 
